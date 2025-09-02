@@ -1,0 +1,39 @@
+console.clear();
+console.show();
+
+
+var response = window.promptSelection("Choix de la feuille de route", ["Complète", "Intermédiaire", "Minimale"] ).toString();
+var activeOpacity = 255;
+var notActiveOpacity = 32;
+var activeText = "#000000";
+var notActiveText =  "#AAAAAA";
+
+
+$(selection).each(function(elem) {
+    switch (response) {
+	    case "Complète":
+            elem.opacity = activeOpacity;
+            elem.fontColor = activeText;
+        break;
+
+        case "Intermédiaire":
+            if (elem.prop("Scenario_intermédiaire") == "Oui") {
+                elem.opacity = activeOpacity;
+                elem.fontColor = activeText;
+            } else {
+                elem.opacity = notActiveOpacity;
+                elem.fontColor = notActiveText;
+            }
+        break;
+
+        case "Minimale":
+            if (elem.prop("Scenario_minimal") == "Oui") {
+                elem.opacity = activeOpacity;
+                elem.fontColor = activeText;
+            } else {
+                elem.opacity = notActiveOpacity;
+                elem.fontColor = notActiveText;
+            }
+        break;
+    }
+});
