@@ -1,0 +1,325 @@
+﻿function indent(indentNb, sContent) {
+	var tabCar = "\t";
+	
+	return "\n" + tabCar.repeat(indentNb) + sContent;
+}
+
+function createTable(tableStructure, settings, objList) {
+	
+	var result = "<w:tbl>";					// Open table
+	result += indent(1, "<w:tblPr>");					// Open table properties
+	result += indent(2, "<w:tblStyle w:val=\"" + settings["docx.elements.table.style"] + "\"/>");	// Define table style
+	result += indent(2, "<w:tblLook w:val=\"04A0\" w:firstRow=\"1\" w:lastRow=\"0\" w:firstColumn=\"0\" w:lastColumn=\"0\" w:noHBand=\"0\" w:noVBand=\"1\"/>");
+	result += indent(2, "<w:tblW w:w=\"5000\" w:type=\"pct\"/>");									// Define table width
+	result += indent(1, "</w:tblPr>");					// Close table properties
+	
+	result += indent(1, "<w:tblGrid>");					// Open table grid
+	for (var j = 0; j < tableStructure.columns.length; j++) {
+		result += indent(2, "<w:gridCol w:type=\"pct\" w:w=\"" + (tableStructure.columns[j].width * 100) + "\"/>");
+	}
+	result += indent(1, "</w:tblGrid>");					// Close table grid
+
+	result += createHeaderRow(tableStructure);	// Close header row
+	
+	
+	// For each row (element)
+    var i;
+	var currentSection = "";
+    for (i in objList) {
+		var allRels = $(objList[i]).inRels().concat($(objList[i]).outRels());
+		var filteredRels = allRels.filter(function(rel) {
+			return rel.type === settings["docx.elements.groupBy.relation"];
+		});	
+		
+		if (filteredRels.length > 0) {
+			if (currentSection != filteredRels[0].target.name) {
+				currentSection = filteredRels[0].target.name;
+				result += "\n" + createSectionRow(tableStructure, currentSection);
+				result += "\n" + createRow(tableStructure, objList[i]);
+			} else {
+				result += "\n" + createRow(tableStructure, objList[i]);
+			}
+		} else {
+			result += "\n" + createRow(tableStructure, objList[i]);
+		}
+    }
+
+	result += "\n</w:tbl>";					// Close table
+	return result;
+}
+
+// ************************************************************
+//
+// HEADER ROW
+//
+// ************************************************************
+function createHeaderRow(tableStructure) {
+	var result = indent(1, "<w:tr>");				// Open table row
+	result += indent(2, "<w:trPr>");
+	result += indent(3, "<w:cantSplit/>");
+	result += indent(3, "<w:tblHeader/>");
+	result += indent(2, "</w:trPr>");
+
+    // Define columns of row
+	for (var j = 0; j < tableStructure.columns.length; j++) {
+		result += indent(2, "<w:tc>");					// Open table cell
+		result += indent(3, "<w:tcPr>");					// Open cell properties
+		result += indent(4, "<w:tcW w:w=\"" + (tableStructure.columns[j].width * 100) + "\"/>");		// Set cell width
+		result += indent(3, "</w:tcPr>");				// Close cell properties
+		
+		result += indent(3, "<w:p>");					// Open paragraph
+		result += indent(4, "<w:r>");						// Open run command
+		result += indent(5, "<w:rPr>");
+		result += indent(6, "<w:sz w:val=\"" + tableStructure.columns[j].fontSize + "\"/>");
+		result += indent(6, "<w:rFonts w:ascii=\"" + tableStructure.columns[j].fontName + "\" w:hAnsi=\"" + tableStructure.columns[j].fontName + "\" w:cs=\"" + tableStructure.columns[j].fontName + "\"/>");
+		result += indent(5, "</w:rPr>");
+		result += indent(5, "<w:t>" + tableStructure.columns[j].header + "</w:t>");
+		result += indent(4, "</w:r>");						// Close run command
+		result += indent(3, "</w:p>");					// Close paragraph
+		result += indent(2, "</w:tc>");				// Close table cell
+	}
+
+	result += indent(1, "</w:tr>");				// Close table row
+	return result;
+}
+
+// ************************************************************
+//
+// SECTION ROW
+//
+// ************************************************************
+function createSectionRow(tableStructure, txt) {
+	var result = indent(1, "<w:tr>");				// Open table row
+	result += indent(2, "<w:trPr>");
+	result += indent(3, "<w:cantSplit/>");
+	result += indent(2, "</w:trPr>");
+	
+    result += indent(2, "<w:tc>");					// Open table cell
+	result += indent(3, "<w:tcPr>");						// Open cell properties
+	result += indent(4, "<w:gridSpan w:val=\"" + tableStructure.columns.length + "\"/>");	// Define cell span
+	if (tableStructure.sectionBgColor === "undefined") {							// Define cell color
+		result += indent(4, "<w:shd w:val=\"clear\" w:color=\"auto\"/>");
+	} else {
+		result += indent(4, "<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"" + tableStructure.sectionBgColor + "\"/>");
+	}
+	result += indent(3, "</w:tcPr>");					// Close cell properties
+	result += indent(3, "<w:p>");						// Open paragraph
+	result += indent(4, "<w:r>");							// Open run command
+	result += indent(5, "<w:rPr>");
+	result += indent(6, "<w:sz w:val=\"" + tableStructure.sectionFontSize + "\"/>");
+	result += indent(6, "<w:rFonts w:ascii=\"" + tableStructure.sectionFontName + "\" w:hAnsi=\"" + tableStructure.sectionFontName + "\" w:cs=\"" + tableStructure.sectionFontName + "\"/>");
+	result += indent(6, "<w:smallCaps w:val=\"true\"/>");
+	result += indent(6, "<w:b/>");
+	result += indent(5, "</w:rPr>");
+	result += indent(5, "<w:t>" + txt + "</w:t>");
+	result += indent(4, "</w:r>");							// Close run command
+	result += indent(3, "</w:p>");						// Close paragraph
+	result += indent(2, "</w:tc>");					// Close table cell
+
+	result += indent(1, "</w:tr>");				// Close table row
+	result += "\n";
+	return result;
+}
+
+// ************************************************************
+//
+// ROW
+//
+// ************************************************************
+function createRow(tableStructure, objElement) {
+	var result = indent(1, "<w:tr>");				// Open table row
+	result += indent(2, "<w:trPr>");
+	result += indent(3, "<w:cantSplit/>");
+	result += indent(2, "</w:trPr>");
+
+	// Print each desired field under the table column for the row
+	for (var j = 0; j < tableStructure.columns.length; j++) {
+		// Get the content attribute for the column to detect fields to insert
+		var mtch = tableStructure.columns[j].content.matchAll(/\[(.*?)\]/g);
+		writeLog("Column to display: " + tableStructure.columns[j].content, "DEBUG")
+		writeLog("Match avant array: " + mtch, "DEBUG")
+		mtch = Array.from(mtch);
+		writeLog("Match après array: " + mtch, "DEBUG")
+		
+		result += indent(2, "<w:tc>");					// Open table cell
+		result += indent(3, "<w:tcPr>");					// Open table cell properties
+		result += indent(4, "<w:tcW w:w=\"" + (tableStructure.columns[j].width * 100) + "\"/>");			// Set cell width 
+		result += indent(3, "</w:tcPr>");				// Close table cell properties
+		
+		// Insert content from the field
+		var tmpContent = tableFormat.columns[j].content;
+		for (var k = 0; k < mtch.length; k++) {
+			switch (mtch[k][1].toLowerCase()) {
+			case 'name':
+				writeLog("Display object name: " + objElement.name, "DEBUG")
+				tmpContent = tmpContent.replace(mtch[k][0], objElement.name);
+				break;
+
+			case 'documentation':
+				writeLog("Display object documentation: " + objElement.documentation, "DEBUG")
+				tmpContent = tmpContent.replace(mtch[k][0], MD2HTML(objElement.documentation));
+				break;
+				
+			default:
+				writeLog("Display object property " + mtch[k][1] + ": " + objElement.prop(mtch[k][1]), "DEBUG")
+				tmpContent = tmpContent.replace(mtch[k][0], objElement.prop(mtch[k][1]));
+				break;
+			}
+		}	
+		if (tmpContent != '') {
+			result += "\n" + convertToOpenXML(tmpContent.trim(), 3, tableStructure.columns[j]);
+		} else {
+			result += indent(3, "<w:p>");
+			result += indent(4, "<w:r>");
+			result += indent(5, "<w:rPr>");
+			result += indent(6, "<w:sz w:val=\"" + tableStructure.columns[j].fontSize + "\"/>");
+			result += indent(6, "<w:rFonts w:ascii=\"" + tableStructure.columns[j].fontName + "\" w:hAnsi=\"" + tableStructure.columns[j].fontName + "\" w:cs=\"" + tableStructure.columns[j].fontName + "\"/>");
+			result += indent(5, "</w:rPr>");
+			result += indent(5, "<w:t> </w:t>");
+			result += indent(4, "</w:r>");
+			result += indent(3, "</w:p>");
+		}
+			
+		result += indent(2, "</w:tc>");				// Close table cell
+	}
+	
+	result += indent(1, "</w:tr>");				// Close table row
+	return result;
+}
+
+
+function convertToOpenXML(input, startIndent, columnStructure) {
+    // Split by new lines
+	fixedInput = input.replace(/<br\s*\/?>/gi, "\n");
+	//fixedInput = fixedInput.replace(/<\/?b>/gi, "");
+    lines = getContent2Array(fixedInput);
+
+    // Loop through each line and apply regex
+    output = "";
+	lines.forEach(function (line) {
+		if (line.startsWith("-")) {
+			// line is a list of items
+			fixedLine = line.replace(/^-+\s+/gm, "▪ ");
+			fixedLine = espaceOpenXML(fixedLine);
+			
+			output += indent(startIndent, "<w:p>");
+			output += indent(startIndent+1, "<w:rPr>");
+			output += indent(startIndent+2, "<w:sz w:val=\"" + columnStructure.fontSize + "\"/>");
+			output += indent(startIndent+2, "<w:rFonts w:ascii=\"" + columnStructure.fontName + "\" w:hAnsi=\"" + columnStructure.fontName + "\" w:cs=\"" + columnStructure.fontName + "\"/>");
+			output += indent(startIndent+2, "<w:pStyle w:val=\"ListParagraph\"/>");
+			output += indent(startIndent+2, "<w:numPr>");
+			output += indent(startIndent+3, "<w:ilvl w:val=\"0\"/>");
+			output += indent(startIndent+3, "<w:numId w:val=\"1\"/>");
+			output += indent(startIndent+2, "</w:numPr>");
+			output += indent(startIndent+1, "</w:rPr>");
+
+			output += indent(startIndent+1, "<w:r>");
+			output += indent(startIndent+2, "<w:rPr>");
+			output += indent(startIndent+3, "<w:sz w:val=\"" + columnStructure.fontSize + "\"/>");
+			output += indent(startIndent+3, "<w:rFonts w:ascii=\"" + columnStructure.fontName + "\" w:hAnsi=\"" + columnStructure.fontName + "\" w:cs=\"" + columnStructure.fontName + "\"/>");
+			output += indent(startIndent+2, "</w:rPr>");
+			output += indent(startIndent+2, "<w:t>" + fixedLine + "</w:t>");
+			output += indent(startIndent+1, "</w:r>");
+			output += indent(startIndent, "</w:p>");
+			
+		} else if (/<b>.*?<\/b>/i.test(line)) {
+			fixedLine = line.replace(/<\/?b>/gi, "");
+			fixedLine = espaceOpenXML(fixedLine);
+			
+			output += indent(startIndent, "<w:p>");
+			output += indent(startIndent+1, "<w:r>");
+			output += indent(startIndent+2, "<w:rPr>");
+			output += indent(startIndent+3, "<w:b/>");
+			output += indent(startIndent+3, "<w:sz w:val=\"" + columnStructure.fontSize + "\"/>");
+			output += indent(startIndent+3, "<w:rFonts w:ascii=\"" + columnStructure.fontName + "\" w:hAnsi=\"" + columnStructure.fontName + "\" w:cs=\"" + columnStructure.fontName + "\"/>");
+			output += indent(startIndent+2, "</w:rPr>");
+			output += indent(startIndent+2, "<w:t>" + fixedLine + "</w:t>");
+			output += indent(startIndent+1, "</w:r>");
+			output += indent(startIndent, "</w:p>");
+
+		} else {
+			fixedLine = espaceOpenXML(line);
+			
+			output += indent(startIndent, "<w:p>");
+			output += indent(startIndent+1, "<w:r>");
+			output += indent(startIndent+2, "<w:rPr>");
+			output += indent(startIndent+2, "<w:sz w:val=\"" + columnStructure.fontSize + "\"/>");
+			output += indent(startIndent+2, "<w:rFonts w:ascii=\"" + columnStructure.fontName + "\" w:hAnsi=\"" + columnStructure.fontName + "\" w:cs=\"" + columnStructure.fontName + "\"/>");
+			output += indent(startIndent+2, "</w:rPr>");
+			output += indent(startIndent+2, "<w:t>" + fixedLine + "</w:t>");
+			output += indent(startIndent+1, "</w:r>");
+			output += indent(startIndent, "</w:p>");
+		}
+    });
+	
+	return output;
+}
+
+
+function espaceOpenXML( sString ) {
+	var output = sString.replace("<", "&lt;");
+	output = output.replace(">", "&gt;");
+	output = output.replace("\"", "&quot;");
+
+	return output;
+}
+
+
+
+// **********************************************************
+// Split lists from lines and put then into an array
+// **********************************************************
+function getContent2Array(input) {
+	// Split text into lines
+	let result = input.split(/\r?\n/);
+
+	if (false) {
+	let lines = text.split(/\r?\n/);
+	let result = [];
+	let listBuffer = []; // Temporary storage for list items
+
+	lines.forEach(line => {
+		let trimmedLine = line.trim(); // Remove extra spaces
+
+		if (trimmedLine.startsWith("-")) {
+			// If it's a list item, store in the buffer
+			listBuffer.push(trimmedLine);
+		} else {
+			// If it's not a list item, first store any buffered list
+			if (listBuffer.length > 0) {
+				result.push(listBuffer.join("\n")); // Join list items as a single entry
+				listBuffer = []; // Reset buffer
+			}
+			if (trimmedLine !== "") {
+				result.push(trimmedLine); // Store normal text line
+			}
+		}
+	});
+
+	// If there's a remaining list in the buffer, add it to the result
+	if (listBuffer.length > 0) {
+		result.push(listBuffer.join("\n"));
+	}
+	}
+	
+	return result;
+}
+
+
+function MD2HTML(theString){
+	var newString = theString;
+	
+	if (theString == null) {
+		newString = "";
+	} else {
+		converter = new showdown.Converter(),
+		newString = converter.makeHtml(theString);
+		
+		newString = newString.replace(/(.*)\[HL\](.+?)\[\/HL\](.*)/s, "$1<font color=\"red\">$2</font>$3")
+		newString = newString.replace(/<p>(.*)<\/p>/, "$1");
+	}
+	
+	
+	//return newString;
+	return theString;
+}

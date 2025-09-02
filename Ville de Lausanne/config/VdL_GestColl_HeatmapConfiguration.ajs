@@ -1,0 +1,42 @@
+﻿/* 
+================================================
+Styles definition	
+================================================ 
+*/
+styleStandard = {fillColor:"#FFFFB5", fontColor:"#000000", iconColor:null};
+styleLightGreen = {fillColor:"#C0FFC0", fontColor:"#000000", iconColor:null};
+styleDarkGreen = {fillColor:"#40FF40", fontColor:"#000000", iconColor:null};
+styleLightGray = {fillColor:"#E3E3E3", fontColor:"#808080", iconColor:null};
+styleDefault = {fillColor:null, fontColor:null, iconColor:null};
+
+style0 = {fillColor:"#FFFFB5", fontColor:"#000000", iconColor:"#000000"};
+style1 = {fillColor:"#C0FFC0", fontColor:"#000000", iconColor:"#000000"};
+style2 = {fillColor:"#40FF40", fontColor:"#000000", iconColor:"#000000"};
+style3 = {fillColor:"#FF0000", fontColor:"#FFFFFF", iconColor:"#FFFFFF"};
+
+/* 
+================================================
+Conditions definitions	
+================================================ 
+*/
+var singleConfig = {};
+var styleConfig = [];
+
+/* Contains the differents conditions and which style to apply for each condition */
+singleConfig = { conditions: [{ propName:"Couverture attendue - Evaluation", propValue:"0-Non souhaité", specialization:"all", formatStyle:styleDefault}
+							 ,{ propName:"Couverture attendue - Evaluation", propValue:"1-Souhaité", specialization:"all", formatStyle:style1}
+							 ,{ propName:"Couverture attendue - Evaluation", propValue:"2-Attendu", specialization:"all", formatStyle:style2}
+							 ,{ propName:"Couverture attendue - Evaluation", propValue:"2?", specialization:"all", formatStyle:style3}
+							 ]
+				,resetFormatStyle:styleDefault };
+				
+/* For each object type, define which config to apply */
+styleConfig['business-object'] = singleConfig;
+styleConfig['business-process'] = singleConfig;
+/*styleConfig['capability'] = singleConfig;*/
+
+singleConfig = { conditions: [{ propName:"viewType", propValue:"SIPOC"}]};
+styleConfig["view"] = singleConfig;
+
+singleConfig = {formatStyle:styleDefault};
+// styleConfig["globalDefault"] = singleConfig;

@@ -1,0 +1,598 @@
+﻿var tableFormatDefFile = __DIR__ + "tableFormatDef.json";
+var dbgLevel = "DEBUG";
+
+load(__DIR__ + "lib\\stringLib.ajs");
+load(__DIR__ + "lib\\showdown.js");
+load(__DIR__ + "lib\\fileLib.ajs");
+
+function writeLog( message, messageLevel ) {
+	switch(dbgLevel) {
+	case "DEBUG":
+		console.log( "[DEBUG] " + message );
+	break;
+
+	case "INFO":
+		if (messageLevel == "INFO") {
+			console.log( message );
+		}
+	break;
+	}
+}
+
+/*
+    Script: Documentation Generation
+    Purpose: To generate architecture output based on a driving view
+
+    Author: Richard Heward - Tame Blue Lion Ltd
+
+    This generates a markdown file with the embedded images and text based upon a driving view in Archi of groups that trigger each other and embedded views. 
+    See my blog for a more detailed explaination. https://www.tamebluelion.co.uk/archimate-documentation
+
+    Setting embed to false will have the images saved to file and references placed in the document. It's then up to your markdown engine. This isn't that well tested.
+    Setting 
+    Note - markdown can be converted to PDF / Word Docs or anything. I've used pandoc command line to do this.
+
+    Date: 8-Oct-2019
+
+    2019-10-09  Steve Blamey - Some changes to add sketch views and pandoc yaml
+    frontmatter so that pandoc makes the toc, etc. Some frontmatter settings can
+    be added as view properties.
+
+ */
+
+// Get current date
+var currentDate = new Date().toLocaleString("en-US", {day: 'numeric', month: 'short', year: 'numeric'});
+
+console.show();
+console.clear();
+writeLog("Documentation Generation @" + currentDate, "INFO");
+
+var tableFormatDef = readFully(tableFormatDefFile, 'UTF-8');
+var tableFormatDefJSON = JSON.parse(tableFormatDef);
+
+var Sections = [];
+var nextOne = null;
+var outInfo = "";
+var theToc = "";
+var path = "";
+var fileName = "";
+var embed = true;
+var IncludeViewElements = true; // a property called 'ExcludeViewElements' on the driving view will override this.
+var drivingView = "Docs"; // will be set to the selected view that has all the groups and view references on.
+
+var documentviewObjects = true;
+
+/* ***************** Escape MD */
+function escapeMD(theString){
+    //var newString = theString.replaceAll("<","&lt;").replaceAll("\n>","\n~QUOTE~");
+    //return newString.substring(0,1) + newString.substring(1).replaceAll(">","&gt;").replaceAll("~QUOTE~",">");
+	
+	if (theString == null) {
+		newString = "";
+	} else {
+		var newString = theString.replaceAll("\r\n", "\\\r\n");
+		newString = newString.replaceAll("\\\r\n-", "-");
+	}
+	
+	return newString;
+}
+
+/* ***************** Convert a MD content to HTML */
+function MD2HTML(theString){
+	var newString = theString;
+	
+	if (theString == null) {
+		newString = "";
+	} else {
+		converter = new showdown.Converter(),
+		newString = converter.makeHtml(theString);
+		
+		newString = newString.replace(/(.*)\[HL\](.+?)\[\/HL\](.*)/s, "$1<font color=\"red\">$2</font>$3")
+		newString = newString.replace(/<p>(.*)<\/p>/, "$1");
+	}
+	
+	
+	return newString;
+}
+
+/* ***************** Generate MD link */
+function generateLink(theString) {
+    // this function thanks to Steven Mileham
+    var regex = /[\[\]\(\)\#\\\/\"]/gi;
+    return "#"+theString.toLowerCase().replace(regex, "")
+                                      .replaceAll(" ", "-")
+                                      .replaceAll("\<", "lt")
+                                      .replaceAll("\>", "gt");
+}
+
+/* ***************** Get table format definition */
+function getTableFormatDef(defName) {
+	var tmpTableFormatDef = "";
+	
+	var i = 0;
+	while (tableFormatDefJSON[i] != null && tmpTableFormatDef == "") {
+		if (tableFormatDefJSON[i].name == defName) {
+			tmpTableFormatDef = tableFormatDefJSON[i];
+		}
+		i++;
+	}
+	
+	if (tmpTableFormatDef == "") {
+		tmpTableFormatDef = getTableFormatDef("elements.default");
+		writeLog("Table format " + defName + " not found in " + tableFormatDefFile + ". Use default instead.", "INFO");
+	}
+	
+	return tmpTableFormatDef;
+}
+
+
+var recursiveDepthMax = 0;
+
+function getDOCXPropertyValue(viewObj, levelObj, propName) {
+	writeLog("getDOCXPropertyValue(" + viewObj + ", " + levelObj + ", " + propName + ")", "DEBUG");
+	if (levelObj == null) {
+		writeLog("Get property " + propName + " levelObj is null", "DEBUG");
+		// No levelObj provided thus get value from view or model
+		if (viewObj.prop(propName) != "") {
+			// From view
+			return viewObj.prop(propName);
+		} else {
+			// From model
+			return viewObj.model.prop(propName);
+		}
+	} else {
+		writeLog("Value of " + propName + " for levelObj (" + levelObj + "): " + levelObj.prop(propName), "DEBUG");
+		if (levelObj.prop(propName) != "" && levelObj.prop(propName) != null) {
+			return levelObj.prop(propName);
+		} else {
+			// Try to get property from parent group
+			writeLog("Try to get property value from parent group", "DEBUG");
+			
+			recursiveDepthMax++; // Just to avoid ifinite loop
+			if (recursiveDepthMax <= 10) { return getDOCXPropertyValue(viewObj, null, propName); }
+
+			var incomingRels = $(levelObj).inRels("composition-relationship").size();
+			if (incomingRels == 1) {
+				// Get parent group
+				return getDOCXPropertyValue(viewObj, $(levelObj).inRels("composition-relationship").first().source, propName);
+			
+			} else {
+				// Get view
+				return getDOCXPropertyValue(viewObj, null, propName);
+			}
+		}
+	}
+}
+
+
+/* ***************** Generate content for a single object line */
+function getViewObjectsLine(viewObj, levelObj) {
+	var tmpResult = "";
+	var tableFormatDef = getTableFormatDef( getDOCXPropertyValue(viewObj, levelObj, "docx.elements.table.format") );
+	writeLog("Get docx.elements.table.format: " + tableFormatDef + "(" + viewObj + ", " + levelObj + ")", "DEBUG");
+	
+	tmpResult += "\n<tr>";
+
+	// Go through all columns of the table defintion
+	var i = 0;
+	while (tableFormatDef.columns[i] != null) {
+		// Get the content attribute for the column to detect fields to insert
+		var mtch = tableFormatDef.columns[i].content.matchAll(/\[(.*?)\]/g);
+		mtch = Array.from(mtch);
+			
+		tmpResult += "<td>";
+		var tmpContent =  tableFormatDef.columns[i].content;
+		// Insert content from the field
+		for (var j = 0; j < mtch.length; j++) {
+			switch (mtch[j][1].toLowerCase()) {
+			case 'name':
+				tmpContent = tmpContent.replace(mtch[j][0], viewObj.name);
+				break;
+
+			case 'documentation':
+				tmpContent = tmpContent.replace(mtch[j][0], MD2HTML(viewObj.documentation));
+				break;
+				
+			default:
+				tmpContent = tmpContent.replace(mtch[j][0], viewObj.prop(mtch[j][1]));
+				break;
+			}
+		}	
+		tmpResult += tmpContent + "</td>";
+
+		i++;
+	}
+	
+	tmpResult += "\n</tr>";
+	
+	return tmpResult;
+}
+
+/* ***************** Generate content for a single object line */
+function getViewObjectsHeader(viewObj, levelObj) {
+	var tmpResult = "";
+	var tableFormatDef = getTableFormatDef( getDOCXPropertyValue(viewObj, levelObj, "docx.elements.table.format") );
+	
+	tmpResult += "\n<thead><tr>";
+
+	var i = 0;
+	while (tableFormatDef.columns[i] != null) {
+		tmpResult += "\n<th>[w:" + tableFormatDef.columns[i].width + "]";
+		if (i == 0) { tmpResult += "[s:" + getDOCXPropertyValue(viewObj, levelObj, "docx.elements.table.style") + "]"; }
+		tmpResult += tableFormatDef.columns[i].header + "</th>";
+
+		i++;
+	}
+	
+	tmpResult += "\n</tr></thead>";
+	
+	return tmpResult;
+}
+
+
+/* ******************************************
+	Generate content with the objects within the view
+   ****************************************** 
+*/
+function getviewObjects(view, levelObj) {
+var tmp_outInfo = "";
+
+    // document the elements (not relations) on the view
+    if (documentviewObjects) {
+        //var elements = $(view).children("element");
+		var elements = $(view).find().not("relationship");
+        
+		// Output child element docs, if elements found
+        if (elements.length != 0) {
+			tmp_outInfo = "";
+            elements.each(function(viewObj) {
+				if ( levelObj.prop("docx.elements.display.include") == "" || 
+					 (inStr(viewObj.type, levelObj.prop("docx.elements.display.include")) && 
+					  !inStr(viewObj.type, levelObj.prop("docx.elements.display.exclude"))) ) {
+					
+					// Generate line according to table format
+					tmp_outInfo += getViewObjectsLine(viewObj, levelObj, drivingView);
+				}
+            });
+			
+			if ( tmp_outInfo != "") {
+				var tableFormatDef = getTableFormatDef( getDOCXPropertyValue(view, levelObj, "docx.elements.table.format") );
+				if (tableFormatDef.title != "") { outInfo += "\n### " + tableFormatDef.title + " \n"; }
+				outInfo += "\n```{=html}"
+				outInfo += "\n<table>"
+				outInfo += "\n" + getViewObjectsHeader(view, levelObj);
+				outInfo += "\n<tbody>";
+				outInfo += tmp_outInfo;
+				outInfo += "\n</tbody>";
+				outInfo += "\n</table>";
+				outInfo += "\n```";
+				outInfo += "\n\n";
+			}
+		}
+    }
+}
+
+
+function getViews(Level, Levelobj, drivingView) {
+    var thisView = null;
+    var thisPath = "";
+    var imageURL = "";
+    
+    if (!Levelobj) {
+        return null;
+    }
+    else {
+        // find the view references composed within this group
+        $(Levelobj).children().each(function(viewRefs) {
+            if ( (viewRefs) && ((viewRefs.type == 'archimate-diagram-model' ) || (viewRefs.type == 'sketch-model' )) ) {
+				writeLog("Generate view " + viewRefs.name, "DEBUG");
+				
+				// Display view name according to parent group property
+				if (Levelobj.prop("docx.view.name.display") == "true") { outputHdr (Level+1, viewRefs.name); }	
+                
+                // Find the actual linked views
+                var viewsCollection = $('archimate-diagram-model');
+                viewsCollection.add($('sketch-model'));
+                viewsCollection.each(function(linkedView) {
+                    if (linkedView.name == viewRefs.name) {
+                        console.log("  Linked Item: ", linkedView.name, "  -> ", linkedView.id);
+
+						// Display view documentation according to parent group property
+						if (Levelobj.prop("docx.view.documentation.display") == "true") { 
+							linkedView.documentation!=""?outInfo+="\n"+MD2HTML(linkedView.documentation)+"\n":true;
+						}	
+
+						// Display view imafge according to parent group property
+						if (Levelobj.prop("docx.view.image.display") == "true") { 
+							var bytes = $.model.renderViewAsBase64(linkedView, "PNG", {scale: 1, margin: 1});
+												
+							if (embed) {
+								//outInfo+="\n!["+linkedView.name+"](data:image/png;base64,"+bytes+")\n";
+								outInfo+="\n![](data:image/png;base64,"+bytes+")\n";
+							}
+							else {
+								thisPath = path +linkedView.name;
+								$.fs.writeFile(thisPath +".png", bytes, "BASE64");    
+								
+								imageURL = thisPath.replaceAll(" ","%20");
+														
+								outInfo+="\n!["+linkedView.name+"][" +linkedView.name   +"]\n";
+								outInfo += "\n[" +linkedView.name +"]: " +imageURL +".png\n";
+							}
+						}
+						
+						// Now document the view details, by default, if there is no ExcludeViewElements property on the driving view.
+						if (IncludeViewElements) {
+							if (Levelobj.prop("docx.elements.display") == "true") { getviewObjects(linkedView, Levelobj, drivingView); }
+						}
+                    }
+                });
+            }
+        });
+    }
+}
+
+
+function outputHdr (Level, Name, Doc) {
+    
+    var indent = "";
+    var tocIndent = "";
+
+    for (var i = 0; i < Level; i++) {
+        indent = indent +"#";
+    }
+    for (var j = 0; j < Level-1; j++) {  // ToC needs one less indent tab.
+        tocIndent = tocIndent +"\t";
+    }
+
+    console.log("Level ", Level, " ", indent, " (", Name, ")");
+    
+/* 
+    .repeat doesn't work on the PC?..
+    var indent = "#".repeat(Level);
+    var tocIndent = " ".repeat(Level);
+*/
+    
+    var outHdr = "\n"+indent +" " +Name+"\n";
+    var thisLink = generateLink(Name);
+
+   // if (Level == 1) {
+        //outInfo += '<div style="page-break-before: always;"></div>';
+        //outInfo += "\n --- \n"; // horiz line before level 1s
+        //outInfo += '\\newpage'; // latex pagebreak
+    //}
+    outInfo += "\n" +outHdr;	
+    //outInfo += "\n" +"[](" +thisLink +")\n";
+    
+    if (Doc) {
+        outInfo += "\n" +MD2HTML(Doc);
+    }
+
+//	console.log(indent +" " +Name);
+//    theToc += tocIndent +"* [" +Name +"](" +thisLink +")\n";
+}
+
+function outputHdr2 (Level, group, view) {
+    var indent = "";
+    var tocIndent = "";
+
+	if (getDOCXPropertyValue(view, group, "docx.group.title.display") == "true") {
+		for (var i = 0; i < Level; i++) {
+			indent = indent +"#";
+		}
+		for (var j = 0; j < Level-1; j++) {  // ToC needs one less indent tab.
+			tocIndent = tocIndent +"\t";
+		}
+
+		console.log("Level ", Level, " ", indent, " (", group.Name, ")");
+    
+		var outHdr = "\n"+indent +" " +group.Name+"\n";
+		var thisLink = generateLink(group.Name);
+
+		outInfo += "\n" +outHdr;	
+	}
+
+	if (group.Documentation) { outInfo += "\n" +MD2HTML(group.Documentation); }
+}
+
+
+function getSubGroups(Group, lvl) {
+    var nextsubGroup = null;
+    var nextsLevel = lvl + 1;
+        
+    $(Group).outRels("composition-relationship").each(function(rel) {
+        
+        var incomingRels2 = $(rel.target).inRels("triggering-relationship").size();
+        var outgoingRels2 = $(rel.target).outRels("triggering-relationship").size();
+        var subGroup = rel.target;
+
+        if (incomingRels2 == 0) {
+            // It's the first child in the sub group
+            Sections.push([subGroup,nextsLevel]);  // from lvl
+        
+            // There's another trigger out so find the next..				
+            nextsubGroup = $(subGroup).outRels("triggering-relationship").first();
+
+            // add the next one onto the array
+            if (nextsubGroup) {				
+                Sections.push([nextsubGroup.target,nextsLevel]);  //from lvl
+                // recurse to get the next subgroup
+                getSubGroups(nextsubGroup.target, nextsLevel);
+            }
+
+        }
+        else {
+            // just ignore the rest, the getSubGroups will take care of them.
+            return(null);
+        }
+    });
+}
+
+function getNextGroup(Group, glvl) {
+    var nextGroup = null;
+    var outgoingRels = $(Group).outRels("triggering-relationship").size();	
+    var nextLevel = glvl + 1;
+    //check for sub groups
+    getSubGroups(Group, glvl);
+    
+    if (outgoingRels == 1) {
+        // There's a triggering out so find the next..				
+        nextGroup = $(Group).outRels("triggering-relationship").first();
+        if (nextGroup) {
+            // add the next one onto the array
+            Sections.push([nextGroup.target,glvl]);
+
+            // recurse to get the next group
+            getNextGroup (nextGroup.target, glvl);
+        }
+        else {
+            window.alert("The groups should all use triggering relationships");
+            return(null);
+        }
+    }
+}
+
+function useDrivingView() {
+    var nextGroup = null;
+    
+    drivingView = selection.filter("archimate-diagram-model").first();	
+    if (!drivingView) {
+        window.alert("Please open and select a Driving View for the documentation");
+        }
+        else
+        {
+            writeLog("Driving view is: " + drivingView.name, "INFO");            
+            if (drivingView.prop("docx:ExcludeViewElements")) {
+                console.log ("Excluding View Elements")
+                IncludeViewElements = false;
+                }
+            else {
+                IncludeViewElements = true;
+            }
+            
+            $(drivingView).children("grouping").each(function(thisGroup) {
+                if (thisGroup) {							
+                    var incomingRels = $(thisGroup).inRels("triggering-relationship").size();
+                    var outgoingRels = $(thisGroup).outRels("triggering-relationship").size();
+                
+                    if (incomingRels == 0) {
+                        // It's the first section, put it in the array.
+                        Sections.push([thisGroup,1]);
+                        getSubGroups(thisGroup, 1);
+                    
+                        if (outgoingRels == 1) {
+                            // There is a next group, lets get it..				
+                            nextOne = $(thisGroup).outRels("triggering-relationship").first();
+                            // Add the next one to the array
+                            if (nextOne) {
+                                Sections.push([nextOne.target, 1]);
+                                getNextGroup (nextOne.target, 1);
+                            }
+                            else {
+                                window.alert("The groups should all use triggering relationships");
+                                return(null);
+                            }
+                        }
+                        return(null);
+                    }
+                    else {
+                        // just ignore the rest, the getNextGroup will take care of them.
+                        return(null);
+                    }
+                }
+            });   
+        }
+        return(true);
+} // end of useDrivingView
+
+var docGen = "";
+
+if (useDrivingView())
+{
+	// Get output MD filename
+	var exportFilename = getDOCXPropertyValue(drivingView, null, "docx.MDFileOutput");
+	writeLog("Get docx.MDFileOutput: " + exportFilename, "DEBUG");
+	if (exportFilename == null || exportFilename == "") { exportFilename = drivingView.name + ".md"; }
+	writeLog("Get docx.MDFileOutput (set to default): " + exportFilename, "DEBUG");
+	
+	// Get output MD folder 
+	var exportFolder = getDOCXPropertyValue(drivingView, null, "docx.MDFolderOutput");
+	writeLog("Get docx.MDFolderOutput: " + exportFolder, "DEBUG");
+	if (exportFolder == "") {
+		// Output folder not provided --> ask user
+		var exportFile = window.promptSaveFile({ title: "Export to File", filterExtensions: [ "*.md" ], fileName: exportFilename } );
+	} else {
+		var exportFile = exportFolder + "\\" + exportFilename;
+	}
+	writeLog("Get exportFile: " + exportFile, "DEBUG");
+	
+    // where's the path. Find where the last slash delimiter is
+    var lastSlash = "";
+    if (exportFile) {
+        if (exportFile.indexOf("/") == -1) {
+            lastSlash = exportFile.lastIndexOf("\\"); // Windows 
+        } else {
+           lastSlash = exportFile.lastIndexOf("/"); // Mac or Linux
+        }
+
+        path = exportFile.substring(0,lastSlash+1);
+        fileName = exportFile.substring(lastSlash+1, exportFile.length);
+        writeLog("path: ", exportFile.substring(0,lastSlash+1), "INFO");
+        writeLog("fileName: ", exportFile.substring(lastSlash+1,exportFile.length), "INFO");
+
+        // Define some yaml frontmatter for pandoc
+        var frontmatter = "---\n";
+        frontmatter += "title: "+drivingView.name+"\n";
+        frontmatter += "subtitle: "+drivingView.prop('docx.subtitle')+"\n";
+        frontmatter += "author: "+drivingView.prop('docx.author')+"\n";
+        frontmatter += "institute: "+drivingView.prop('docx.institute')+"\n"; //company name
+        frontmatter += "logo: "+drivingView.prop('docx.logo')+"\n"; //path to your logo file
+        frontmatter += "date: "+currentDate+"\n";
+        frontmatter += "toc: true\n";
+        frontmatter += "toc-depth: 2\n";
+        frontmatter += "numbersections: true\n";
+        frontmatter += "mainfont: 'Roboto'\n";
+        frontmatter += "papersize: a4\n";
+        frontmatter += "pagestyle: report\n";
+        frontmatter += "geometry:\n";
+        frontmatter += "  - top=3.5cm\n";
+        frontmatter += "  - bottom=3.5cm\n";
+        frontmatter += "  - right=2.5cm\n";
+        frontmatter += "  - left=2.5cm\n";
+        frontmatter += "  - footskip=2cm\n";
+        frontmatter += "---\n";
+
+        // go through the array, and output.
+        for (var i = 0; i < Sections.length; i++) {
+			switch(getDOCXPropertyValue(drivingView, Sections[i][0], "docx.group.pagebreak.before")) {
+			case 'simple':
+				outInfo += "\n[pagebreak]"
+				break;
+				
+			case 'landscape':
+				outInfo += "\n[landscape]"
+				break;
+
+			case 'portrait':
+				outInfo += "\n[portrait]"
+				break;
+			}
+			
+			//outputHdr (Sections[i][1], Sections[i][0].name, Sections[i][0].documentation);
+			outputHdr2 (Sections[i][1], Sections[i][0], drivingView);
+			writeLog("Call getViews(" + Sections[i][1] + ", " + Sections[i][0] + ")");
+			getViews (Sections[i][1], Sections[i][0]);
+		}	
+		//docGen = "# "+drivingView.name +"\n"
+		//docGen += "\n---\n";
+		//docGen += theToc +"\n"; // pandoc will make a toc for us
+		docGen += frontmatter;
+		docGen += outInfo;
+		//docGen += "\n\nGenerated on: " +currentDate;
+	
+		$.fs.writeFile(exportFile, docGen);
+    }
+}
+
+// end of script	
+console.log("Done");

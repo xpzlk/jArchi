@@ -1,0 +1,63 @@
+﻿function getItemStyle( theItem, configStyle ) {
+	var result = null;
+
+	for (var i=0; i<configStyle.conditions.length; i++) {
+		cond = configStyle.conditions[i];
+		
+		if (cond.propName != null) {
+			if (theItem.prop(cond.propName) == cond.propValue) {
+				if (cond.specialization == "all") {	
+					result = cond.formatStyle;
+				} else if (theItem.specialization == cond.specialization) {
+					result = cond.formatStyle;
+				}
+			}
+		} else if (cond.specialization != "all") {
+			if (theItem.specialization == cond.specialization) {
+				result = cond.formatStyle;
+			}
+		}
+	}	
+	
+	/* The item is not matching the expected (property, value) and resetFormatStyle is set --> format it to default */
+	if (result == null && configStyle.resetFormatStyle != null) { result = configStyle.resetFormatStyle; }
+	
+	return result;
+}
+
+function formatItem( theItem, eltStyle ) {
+	theItem.fillColor = eltStyle.fillColor;
+	theItem.fontColor = eltStyle.fontColor;
+	theItem.iconColor = eltStyle.iconColor;
+}
+
+function formatView( theView ) {
+	if (theView == null) { throw new Error('No view selected for formating. Please select a view'); }
+	
+	/* Scan for all elements within the view */
+	$(theView).find().each(function(anItem) {
+		if ( styleConfig[anItem.type] != null ) {	/* Element has been found in the styleConfig array */
+			var formatStyle = getItemStyle(anItem, styleConfig[anItem.type]); /* Get item formating */
+			if ( formatStyle != null ) { formatItem( anItem, formatStyle ) }; /* Format the item */
+			
+		} else if ( styleConfig["globalDefault"] != null ) { /* There is a global reset configuration so reset the item to default style */	
+			formatItem( anItem, styleConfig["globalDefault"].formatStyle );
+		}
+	})
+}
+
+function formatViews() {
+	/* Scan for all views */
+	$("archimate-diagram-model").each(function(aView) {
+		if ( styleConfig["view"] != null ) {
+			/* Restriction on view detected */
+			
+			if ( aView.prop(styleConfig["view"].conditions.propName) == styleConfig["view"].conditions.propValue ) {
+				/* The view is matching the expected (property, value) */
+				formatView( aView );
+			}
+		} else {
+			formatView( aView );
+		}
+	})
+}

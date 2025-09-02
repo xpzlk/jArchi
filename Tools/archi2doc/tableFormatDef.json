@@ -1,0 +1,183 @@
+[ 
+	{	"name": "VdL.elements.ID+Name+Desc|Revue (revue finale)", 
+		"title": "Détails des exigences",
+		"sectionBgColor": "DFDFDF",
+		"sectionFontSize": "22",
+		"sectionFontName": "Arial",
+		"columns": [{ 
+						"width": "50", 
+						"header": "Exigence", 
+						"content": "<b>[reqID] - [Name]</b><br>[Documentation]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "50", 
+						"header": "Remarque", 
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}]	
+	}, 
+	
+	{	"name": "VdL.elements.ID|Name+Desc (final)", 
+		"title": "Détails des exigences",
+		"groupBy": "requirement",
+		"sectionBgColor": "DFDFDF",
+		"sectionFontSize": "22",
+		"sectionFontName": "Arial",
+		"columns": [{ 
+						"width": "10", 
+						"header": "Exigence", 
+						"content": "[reqID]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "90", 
+						"header": "Description",
+						"content": "<b>[Name]</b><br>[Documentation]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}]	
+	}, 
+	
+	{	"name": "VdL.elements.2Columns", 
+		"title": "",
+		"sectionBgColor": "DFDFDF",
+		"sectionFontSize": "20",
+		"sectionFontName": "Arial",
+		"columns": [{ 
+						"width": "50", 
+						"header": "Exigence", 
+						"content": "<b>[reqID] - [Name]</b><br>[Documentation]", 
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "50", 
+						"header": "Remarques",
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}]	
+	}, 
+
+
+	
+	{	"name": "elements.2Columns.VdL", 
+		"title": "",
+		"columns": [{ 
+						"width": "10", 
+						"header": "Exigence", 
+						"content": "[reqID]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "90", 
+						"header": "Description",
+						"content": "<b>[Name]</b><br>[Documentation]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}]	
+	}, 
+
+	{	"name": "elements.2+3Columns.VdL", 
+		"title": "Détails des exigences",
+		"groupBy": "requirement",
+		"columns": [{ 
+						"width": "10", 
+						"header": "Exigence", 
+						"content": "[reqID]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "30", 
+						"header": "Description",
+						"content": "<b>[Name]</b><br>[Documentation]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "20", 
+						"header": "Rmq MRV",
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "20", 
+						"header": "Rmq MHL",
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "20", 
+						"header": "Rmq CAB",
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}]	
+	}, 
+
+
+	{	"name": "elements.1+3Columns.VdL", 
+		"title": "Détails des exigences",
+		"groupBy": "requirement",
+		"sectionBgColor": "DFDFDF",
+		"sectionFontSize": "20",
+		"sectionFontName": "Arial",
+		"columns": [{ 
+						"width": "25", 
+						"header": "Description",
+						"content": "<b>[reqID] - [Name]</b><br>[Documentation]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "25", 
+						"header": "Rmq MRV",
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "25", 
+						"header": "Rmq MHL",
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "25", 
+						"header": "Rmq CAB",
+						"content": "",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}]	
+	}, 
+	
+	{	"name": "elements.default", 
+		"title": "Détails",
+		"sectionBgColor": "DFDFDF",
+		"sectionFontSize": "20",
+		"sectionFontName": "Arial",
+		"columns": [{ 
+						"width": "25", 
+						"header": "Nom", 
+						"content": "[Name]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}, 
+					{ 
+						"width": "75", 
+						"header": "Documentation",
+						"content": "[Documentation]",
+						"fontSize": "18",
+						"fontName": "Arial" 
+					}]	
+	}	
+]

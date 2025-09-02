@@ -1,0 +1,47 @@
+﻿console.clear();
+console.show();
+console.log("Assign or update property/value to selection");
+
+// 1. Récupération de tous les noms de propriétés existantes
+var propNames = [];
+$(selection).each(function(_, element) {
+    var props = element.props();
+    for (var key in props) {
+        if (props.hasOwnProperty(key) && propNames.indexOf(key) === -1) {
+            propNames.push(key);
+        }
+    }
+});
+
+// 2. Affichage d’une liste déroulante si au moins une propriété existe
+var propName;
+if (propNames.length) {
+    // Import de Java.type pour accéder à JOptionPane
+    var JOptionPane = Java.type("javax.swing.JOptionPane");
+    // Conversion de l’Array JS en tableau Java String[]
+    var choices = Java.to(propNames, Java.type("java.lang.String[]"));
+    // Affiche un dialog avec sélection possible parmi 'choices' :contentReference[oaicite:0]{index=0}
+    propName = JOptionPane.showInputDialog(
+        null,
+        "Sélectionnez la propriété à modifier :",
+        "Propriétés existantes",
+        JOptionPane.QUESTION_MESSAGE,
+        null,
+        choices,
+        choices[0]
+    );
+} else {
+    // Sinon on retombe sur un prompt classique
+    propName = window.prompt("Nom de la propriété :", "");
+}
+
+if (propName) {
+    // 3. Demande de la valeur et application à chaque élément
+    var propValue = window.prompt("Valeur de la propriété :", "");
+    if (propValue != null) {
+        $(selection).each(function(_, element) {
+            // crée ou met à jour systématiquement la propriété
+            element.prop(propName, propValue, false);
+        });
+    }
+}

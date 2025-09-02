@@ -1,0 +1,10 @@
+﻿/*
+ * New Archi Script
+ */
+ 
+console.clear();
+console.show();
+
+$("archimate-diagram-model").each(function(theView) {
+	console.log(theView.name + ": " + theView.id);
+})

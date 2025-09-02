@@ -1,0 +1,11 @@
+﻿console.clear();
+console.show();
+
+console.log($.process.release.jArchiVersion);
+console.log($.model.getPath());
+/*
+var method = Packages.com.archimatetool.script.dom.model.ArchimateModelProxy.class.getDeclaredMethod("getEObject");
+	method.setAccessible(true);
+	var m = method.invoke(model);
+	console.log(m.getFile())
+*/

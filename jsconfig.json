@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "typeRoots": ["./typings"],
+    "types": ["jarchi"]
+  },
+  "include": ["**/*.ajs", "typings"]
+}

@@ -1,0 +1,14 @@
+﻿// Get the currently selected view
+let view = selection.first();
+
+// Check if a view is selected
+if (view && view.type === "archimate-diagram-model") {
+    lastModified = view.prop("lastModified");
+    if (lastModified) {
+        console.log("Last Modified Date:", new Date(parseInt(lastModified)));
+    } else {
+        console.log("No last modified date found for this view.");
+    }
+} else {
+    console.log("Please select a view.");
+}

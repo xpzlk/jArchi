@@ -1,0 +1,107 @@
+﻿/*
+ * New Archi Script
+ */
+var stdColorR = 0;
+var stdColorG = 0;
+var stdColorB = 0;
+
+var warningColorR = 255;
+var warningColorG = 149;
+var warningColorB = 0;
+
+var errorColorR = 255;
+var errorColorG = 0;
+var errorColorB = 0;
+
+var currentTitle = "";
+ 
+console.show();
+console.clear();
+
+function writeLog(title, msg, level) {
+	if (title !== currentTitle) {
+		console.setTextColor(stdColorR, stdColorG, stdColorB);
+		console.log("======= " + title);
+		currentTitle = title;
+	}
+
+	if (level == "info") {
+		console.setTextColor(stdColorR, stdColorG, stdColorB);
+	} else if (level == "warning") {
+		console.setTextColor(warningColorR, warningColorG, warningColorB);
+	} else if (level == "error") {
+		console.setTextColor(errorColorR, errorColorG, errorColorB);
+	}
+	
+	console.log(msg);
+	console.setTextColor(stdColorR, stdColorG, stdColorB);
+}
+
+
+				
+var theView = $(selection).filter("archimate-diagram-model").first();				
+if (theView) {
+	writeLog("", "Perform quality control on view [" + theView.name + "]", "info");
+	
+	/* Check properties on view */	
+	if (theView.prop("id") !== theView.id ) {
+		writeLog("", "View ID not correct or not set", "error");		
+	}
+	if (theView.prop("Date révision") == "" ) {
+		writeLog("", "[Date de révision] not set ", "error");				
+	}
+	if (theView.prop("Référence atelier") == "" ) {
+		writeLog("", "[Référence atelier] not set ", "error");				
+	}
+	if (theView.prop("Statut") == "" ) {
+		writeLog("", "[Statut] not set ", "error");				
+	} else {
+		if (theView.prop("Statut") !== "En cours de revue" && theView.prop("Statut") !== "Prêt pour atelier" && theView.prop("Statut") !== "En cours de revue"  ) {
+			writeLog("", "[Statut] Unknown value", "error");				
+		}
+	}
+	
+	if (theView.prop("viewType") !== "SIPOC" && theView.prop("viewType") !== "RACI" ) {
+		writeLog("", "[viewType] not set or with wrong value", "error");				
+	} 
+    $(theView).find().not("relationship").not("diagram-model-group").not("diagram-model-note").each(function(e) {
+		title = "Perform quality control on element [" + e.name + "]";
+		if (e.type == "business-process" || e.type == "business-object") {
+			/* Check that "Couverture actuelle" is set */
+			if (e.prop("Couverture actuelle (Muséris) - Evaluation") !== "0-Non couvert" && 
+				e.prop("Couverture actuelle (Muséris) - Evaluation") !== "1-Partiel" &&
+				e.prop("Couverture actuelle (Muséris) - Evaluation") !== "2-Couvert") {
+				writeLog(title, "Property 'Couverture actuelle' not provided or wrong value", "warning");
+			}
+
+			/* Check that "Couverture attendue" is set */
+			if (e.prop("Couverture attendue - Evaluation") !== "0-Non souhaité" && 
+				e.prop("Couverture attendue - Evaluation") !== "1-Souhaité" &&
+				e.prop("Couverture attendue - Evaluation") !== "2-Attendu") {
+				writeLog(title, "Property 'Couverture attendue - Evaluation' not provided or wrong value", "error");
+			} else {
+				if (e.prop("Couverture attendue - Evaluation") !== "0-Non souhaité") {
+					if (e.prop("Couverture attendue - Commentaire") == "") { writeLog(title, "Property 'Couverture attendue - Commentaire' not provided", "error"); }
+					if (e.prop("Couverture attendue - Commentaire") !== "n/a" 
+						&& !e.prop("Couverture attendue - Commentaire").match("^La solution permet")
+						&& !e.prop("Couverture attendue - Commentaire").match("^Exigences couvertes par")) { 
+						writeLog(title, "Couverture attendue - Commentaire' not properly set", "warning"); 
+					}
+				}				
+			}
+
+			
+			/* Check for useless parameters */
+			if (e.prop("Fournisseur - Réponse") !== null) {
+				writeLog(title, "Property 'Fournisseur - Réponse' to be removed", "warning");
+			}
+			if (e.prop("Fournisseur - Module") !== null) {
+				writeLog(title, "Property 'Fournisseur - Module' to be removed", "warning");
+			}
+		}
+		
+
+	})
+} else {
+    console.error("> Please select a view.");
+}

@@ -1,0 +1,11 @@
+﻿console.clear();
+load(__DIR__ + "..\\library\\coloring.ajs");
+load(__DIR__ + "config\\VdL_GestColl_HeatmapConfiguration.ajs");
+
+/* 
+================================================
+Run formatting	
+================================================ 
+*/
+var activeView = $(selection).filter("archimate-diagram-model").first();				
+formatView( activeView );

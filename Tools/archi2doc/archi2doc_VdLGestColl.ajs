@@ -1,0 +1,38 @@
+﻿load(__DIR__ + "archi2doc_v2.ajs");
+
+var viewList = [
+	 {name: "Acquerir et enregistrer - Doc", diagram: null}
+	,{name: "Reproductions et droits - Doc", diagram: null}
+	,{name: "Gérer les emplacements et les déplacements - Doc", diagram: null}
+	,{name: "Emprunter un objet - Doc", diagram: null}
+	,{name: "Gérer les entrées - Doc", diagram: null}
+	,{name: "Examiner les collections - Doc", diagram: null}
+	,{name: "Inventorier et cataloguer les objets - Doc", diagram: null}
+	,{name: "Planifier les mesures d'urgence pour les collections - Doc", diagram: null}
+	,{name: "Qualité Produit - Adéquation fonctionnelle - Doc", diagram: null}
+	,{name: "Personnes - Doc", diagram: null}
+	,{name: "Gérer les prêts d'objets - Doc", diagram: null}
+	,{name: "Récoler les objets - Doc", diagram: null}
+	,{name: "Retirer de l'inventaire et aliénier - Doc", diagram: null}
+	,{name: "Gérer les sorties - Doc", diagram: null}
+	,{name: "Assurer et indemniser - Doc", diagram: null}
+	,{name: "Gérer l'utilisation des collections - Doc", diagram: null}
+	,{name: "Gérer les références bibliographiques - Doc", diagram: null}
+	,{name: "Qualité Produit - Doc", diagram: null}
+	,{name: "Reprise des données - Doc", diagram: null}
+	,{name: "Gérer les dommages et pertes - Doc", diagram: null}
+	,{name: "Gérer l'état des objets et leur évaluation technique - Doc", diagram: null}
+	,{name: "Conserver et restaurer les collections - Doc", diagram: null}
+	,{name: "Reprise des données - Doc", diagram: null}
+];
+
+
+$("view").forEach(function(theView) {
+	var foundView = viewList.find(foundView => foundView.name === theView.name);	
+	if (foundView != null) {
+		foundView.diagram = theView;
+	}
+})
+
+
+main();

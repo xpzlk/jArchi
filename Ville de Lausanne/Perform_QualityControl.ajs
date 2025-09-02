@@ -1,0 +1,34 @@
+﻿console.clear();
+console.show();
+load(__DIR__ + "..\\library\\qualityControl.ajs");
+
+NC_deleteAll();
+
+$("archimate-diagram-model").each(function(theView) {
+	console.log( "======== " + theView.name + " ========");
+	
+	view_assignPropertyID( theView );
+	
+	switch ( theView.prop("viewType") ) { 
+	case null:
+		NC_create(theView, null, "View without viewType", "[" + theView.name + "] has no proprety 'viewType' defined");
+		break;
+
+	case '':
+		NC_create(theView, null, "View with viewType empty",  "[" + theView.name + "] 'viewType' property is empty");
+		break;
+
+	case 'requirement':
+		// Check that all application function is linked to requirement
+		view_checkLinks ( theView, "application-function", "", "requirement", "", "realization-relationship" );
+		
+		// Check that all requirement is linked to an business Process
+		// Check that all business process required is linked to a requirement
+		
+		view_checkProperty ( theView, "Date révision", null );
+		view_checkPropertyIsDate ( theView, "Date révision", null );
+		break;
+	}
+
+	console.log( "");
+});

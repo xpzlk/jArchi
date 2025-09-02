@@ -1,0 +1,14 @@
+﻿console.clear();
+console.show();
+var targetElement;
+
+$("concept").each(function(c) {
+	if (c.id == "id-4bea1dee7a2b447794a4f15d3f955938") { 
+		targetElement = c; 
+	} 
+});
+
+$(selection).each(function(element) {
+	var relationship = model.createRelationship("association-relationship", "", element, targetElement);
+});
+

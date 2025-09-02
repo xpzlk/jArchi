@@ -1,0 +1,187 @@
+﻿console.clear();
+
+/* 
+defaultColours
+- TRUE: non-matching components will be reseted to default color
+- FALSE: non-matching components will be left to their current color
+*/
+var defaultColours = false;
+
+/*
+debug
+- TRUE: more verbose in console for debug purpose
+- FALSE: no information logged to the console
+*/
+var debug = false;
+
+/*
+Fetch arguments
+*/
+var arguments = $.process.argv;
+var coloring = "";
+
+for(i = 0; i < arguments.length; i++) {
+	if (arguments[i] == "-coloring") {
+		coloring = arguments[i+1];
+	}
+}
+
+console.log("Coloring parameter: " + coloring);
+
+/*
+If arguments are empty, prompt user
+*/
+if (coloring == "") {
+	var promptTxt = "Please select coloring option:\n";
+	promptTxt = promptTxt + "1 - Règlement de compétition\n"
+	coloring = window.prompt(promptTxt, "");
+}
+
+/*
+paramColoring
+- for each group of property/value, define the color to be used to fill element
+- color is to be defined using HTML code: #RRGGBB
+- use "default" to reset element to Archi default color
+*/
+$styleStandard = [{fillColor:"#FFFFB5", fontColor:"#000000", iconColor:null}];
+$styleLightGreen = [{fillColor:"#C0FFC0", fontColor:"#000000", iconColor:null}];
+$styleDarkGreen = [{fillColor:"#40FF40", fontColor:"#000000", iconColor:null}];
+$styleLightGray = [{fillColor:"#E3E3E3", fontColor:"#808080", iconColor:null}];
+$styleDefault = [{fillColor:null, fontColor:null, iconColor:null}];
+
+if (coloring == "1") {
+	var paramColoring = [
+		{viewProp:"viewType", viewPropValue:"Règlement compétition", viewpoint:"", 
+		 elementType:"", elementSpecialization:"", 
+		 elementProp:[{propName:"applicable", propValue:"false"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleLightGray},
+		
+		{viewProp:"viewType", viewPropValue:"Règlement compétition", viewpoint:"", 
+		 elementType:"", elementSpecialization:"", 
+		 elementProp:[{propName:"Couverture attendue - Evaluation", propValue:"1-Souhaité"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleLightGreen},
+		 
+		{viewProp:"viewType", viewPropValue:"Règlement compétition", viewpoint:"", 
+		 elementType:"", elementSpecialization:"", 
+		 elementProp:[{propName:"Couverture attendue - Evaluation", propValue:"2-Attendu"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleDarkGreen}
+	];
+	performColoring = 1;
+
+} else if (coloring == "2") {
+	var paramColoring = [
+		{viewProp:"viewType", viewPropValue:"Cartographie capacités", viewpoint:"", 
+		 elementType:"capability", elementSpecialization:"", 
+		 elementProp:[{propName:"Couverture attendue - Evaluation", propValue:"Hors périmètre"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleLightGray},
+		 
+		{viewProp:"viewType", viewPropValue:"Cartographie capacités", viewpoint:"", 
+		 elementType:"capability", elementSpecialization:"", 
+		 elementProp:[{propName:"Couverture attendue - Evaluation", propValue:"0-Non souhaité"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleStandard},
+		 
+		{viewProp:"viewType", viewPropValue:"Cartographie capacités", viewpoint:"", 
+		 elementType:"capability", elementSpecialization:"", 
+		 elementProp:[{propName:"Couverture attendue - Evaluation", propValue:"1-Souhaité"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleLightGreen},
+		 
+		{viewProp:"viewType", viewPropValue:"Cartographie capacités", viewpoint:"", 
+		 elementType:"capability", elementSpecialization:"", 
+		 elementProp:[{propName:"Couverture attendue - Evaluation", propValue:"2-Attendu"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleDarkGreen}
+	];
+	performColoring = 1;
+	
+} else if (coloring == "3") {
+	var paramColoring = [
+		{viewProp:"viewType", viewPropValue:"SIPOC", viewpoint:"", 
+		 elementType:"", elementSpecialization:"", 
+		 elementProp:[{propName:"Applicable MRV", propValue:"Non"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		 style:$styleLightGray},
+		
+		{viewProp:"viewType", viewPropValue:"SIPOC", viewpoint:"", 
+		 elementType:"", elementSpecialization:"",  
+		 elementProp:[{propName:"Applicable MRV", propValue:"Oui"}
+		 ], 
+		 relationType:"", relationSpecialization:"", 
+		 relationProp:[{propName:"", propValue:""}
+		 ], 
+		style:$styleStandard}
+	];
+	performColoring = 1;
+
+} else {
+	window.alert("Coloring option not valid!");
+	performColoring = 0;
+}
+
+if (performColoring == "1") {
+	for (var i=0; i<paramColoring.length; i++) {
+		$("archimate-diagram-model").each(function(theView) {			/* For each view */
+			/* Check if the view is candidate for coloring */
+			viewCandidate = true;
+			if (paramColoring[i].viewProp != '' && theView.prop(paramColoring[i].viewProp) !== paramColoring[i].viewPropValue) { viewCandidate = false }
+			if (paramColoring[i].viewpoint != '' && theView.viewpoint !== paramColoring[i].viewpoint) { viewCandidate = false }
+			
+			if (viewCandidate) {
+				$(theView).find().each(function(viewItem) {								/* For each element of the view */
+					eltCandidate = true;
+					if (paramColoring[i].elementType != '' && viewItem.Type !== paramColoring[i].elementType) { eltCandidate = false }
+					if (paramColoring[i].elementSpecialization != '' && viewItem.specialization !== paramColoring[i].elementSpecialization) { eltCandidate = false }
+					for (var iProp=0; iProp<paramColoring[i].elementProp.length; iProp++) {
+						if (paramColoring[i].elementProp[iProp].propName == '[DOCUMENTATION]') {
+							if (viewItem.documentation !== paramColoring[i].elementProp[iProp].propValue) { eltCandidate = false }
+						} else {
+							if (paramColoring[i].elementProp[iProp].propName != '' && viewItem.prop(paramColoring[i].elementProp[iProp].propName) !== paramColoring[i].elementProp[iProp].propValue) { eltCandidate = false }
+						}
+					}
+					
+					if (paramColoring[i].relationType != '' && viewItem.Type !== paramColoring[i].relationType) { eltCandidate = false }
+					if (paramColoring[i].relationSpecialization != '' && viewItem.specialization !== paramColoring[i].relationSpecialization) { eltCandidate = false }
+					for (var iProp=0; iProp<paramColoring[i].relationProp.length; iProp++) {
+						if (paramColoring[i].relationProp[iProp].propName != '' && viewItem.prop(paramColoring[i].relationProp[iProp].propName) !== paramColoring[i].relationProp[iProp].propValue) { eltCandidate = false }
+					}
+					
+					if (eltCandidate) {
+						viewItem.fillColor = paramColoring[i].style[0].fillColor
+						viewItem.fontColor = paramColoring[i].style[0].fontColor;
+						viewItem.iconColor = paramColoring[i].style[0].iconColor;
+					}
+				})
+			}
+		})
+		
+	}
+}

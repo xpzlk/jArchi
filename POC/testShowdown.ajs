@@ -1,0 +1,9 @@
+﻿console.clear();
+load(__DIR__ + "..\\library\\showdown\\showdown.js");
+
+//var showdown  = require('showdown'),
+    converter = new showdown.Converter(),
+    text      = '# hello, markdown!',
+    html      = converter.makeHtml(text);
+
+console.log(html);

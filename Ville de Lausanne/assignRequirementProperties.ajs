@@ -1,0 +1,15 @@
+console.show();
+console.clear();
+
+
+$(selection).each(function(e) {
+	
+	e.name = e.name.replace("  ", " ");
+	
+	var theName = e.name.split(" ");
+	e.prop("reqID", theName[0], false);
+	
+	var reqLabel = e.name.replace(theName[0] + " - ", "");
+	e.prop("reqLabel", reqLabel, false);
+	
+});

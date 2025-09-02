@@ -1,0 +1,84 @@
+﻿/*
+defaultColours
+- TRUE: non-matching components will be reseted to default color
+- FALSE: non-matching components will be left to their current color
+*/
+var defaultColours = false;
+
+
+/*
+paramPropValue
+- for each group of property/value, define the color to be used to fill element
+- color is to be defined using HTML code: #RRGGBB
+- use "default" to reset element to Archi default color
+*/
+var paramPropValue = [
+	{prop:"Applicable MRV", value:"Non", color:"#E3E3E3", fontColor:"#808080" },
+	{prop:"Applicable MRV", value:"Oui", color:"#FFFFB5", fontColor:"#000000" }
+];
+
+
+/*
+debug
+- TRUE: more verbose in console for debug purpose
+- FALSE: no information logged to the console
+*/
+var debug = false;
+
+
+console.show();
+console.clear();
+
+				
+var theView = $(selection).filter("archimate-diagram-model").first();				
+if (theView) {
+    $(theView).find().not("relationship").not("diagram-model-group").not("diagram-model-note").each(function(e) {
+			debug ? console.log(e.name) : true;
+			
+			/* Walkthrough all elements of the view */
+			theProps = e.prop();
+			for (var i=0; i<theProps.length; i++) {
+				/* Get current property and its value */
+				currentPropValue = {prop:theProps[i], value:e.prop(theProps[i])};
+				
+				debug ? console.log(currentPropValue) : true;
+				
+				/* Search for the property/value within the paramPropValue parameter */
+				var index;
+				paramPropValue.findIndex(function(item, idx) {
+					if (item.prop == currentPropValue.prop && item.value == currentPropValue.value) {
+						index = idx;
+						return true;
+					}
+					}
+				);
+				debug ? console.log(index) : true;
+				
+				if (index >= 0) {
+					/* Color instruction detected so color element as defined */
+					if (paramPropValue[index].color == "default") {
+						e.fillColor = null;
+					} else {
+						e.fillColor = paramPropValue[index].color;
+					}
+
+					if (paramPropValue[index].fontColor == "default") {
+						e.fontColor = null;
+						e.iconColor = null;
+					} else {
+						e.fontColor = paramPropValue[index].fontColor;
+						e.iconColor = paramPropValue[index].fontColor;
+					}
+				} else {
+					/* Color instruction not detected so use global parameter to reset color or not */
+					if (defaultColours) {
+						e.fillColor = null;
+						e.fontColor = null;
+						e.iconColor = null;
+					}
+				}
+		}
+	})
+} else {
+    console.error("> Please select a view.");
+}

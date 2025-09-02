@@ -1,0 +1,23 @@
+﻿function convertToOpenXML(input) {
+    // Convert new lines to OpenXML break tags
+    input = input.replace(/\n/g, '<w:p><w:r><w:br/></w:r></w:p>\n');
+    input = input.replace(/<br>/g, '<w:p><w:r><w:br/></w:r></w:p>\n');
+    
+    // Convert <b> tags
+    input = input.replace(/<b>(.*?)<\/b>/g, '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>$1</w:t></w:r></w:p>');
+    
+    // Convert <i> tags
+    input = input.replace(/<i>(.*?)<\/i>/g, '<w:p><w:r><w:rPr><w:i/></w:rPr><w:t>$1</w:t></w:r></w:p>');
+    
+    // Wrap remaining text in <w:r><w:t>
+    input = input.replace(/^(.*?)</g, '<w:p><w:r><w:t>$1</w:t></w:r><w:p><');
+    input = input.replace(/<\/[^>]+>\s*([^<>]+)$/g, '<w:p><w:r><w:t>$1</w:t></w:r><w:p>');
+    
+    //return '<w:p>' + input + '</w:p>';
+	return input;
+}
+
+// Example usage
+var htmlString = "coucou<b>UTILBIEN.1 - Titre de l'exigence</b>\nDescription de l'exigence";
+var openXML = convertToOpenXML(htmlString);
+console.log(openXML);

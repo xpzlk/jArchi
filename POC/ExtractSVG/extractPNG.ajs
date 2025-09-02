@@ -1,0 +1,21 @@
+﻿// === CONFIGURATION ===
+//var dossierExport = "C:/Users/xpzlk/REDSEN Holding SARL/Lausanne - Gestion Collections Musées - General/01_Mission Expertise Gestion Collections Muséales/10_Analyse/Appel d'Offres/generation/img"; // Remplace ce chemin selon ton système
+var dossierExport = "C:/_xperrin/Professionnel/VdL/generation/img";
+
+// Crée le dossier d'export s’il n'existe pas
+var dossier = new java.io.File(dossierExport);
+if (!dossier.exists()) {
+    dossier.mkdirs();
+}
+
+// === EXPORT DES VUES ===
+var vues = $('view');
+
+console.log("Nombre de vues trouvées : " + vues.length);
+
+vues.forEach(function(vue) {
+	var options = {margin: 0, scale: 1};
+	$.model.renderViewToFile(vue, dossierExport + "/" + vue.id + ".png", "PNG", options);
+
+    console.log("Vue exportée : " + vue.name);
+});

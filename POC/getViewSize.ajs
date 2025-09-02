@@ -1,0 +1,9 @@
+﻿drivingView = selection.filter("archimate-diagram-model").first();
+
+$.model.renderViewToFile(drivingView, "c:\\Users\\xpzlk\\Downloads\\test.png", "PNG");
+
+const img = new Image();
+img.onload = function() {
+  console.log(this.width + 'x' + this.height);
+}
+img.src = "c:\\Users\\xpzlk\\Downloads\\test.png";

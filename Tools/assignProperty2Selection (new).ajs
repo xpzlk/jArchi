@@ -1,0 +1,108 @@
+console.clear();
+console.show();
+console.log("Assign property/value to selection");
+
+var propValuesMap = {};
+
+// Petite fonction utilitaire : enregistre value dans propValuesMap[propName]
+function collect(propName, value) {
+  if (propValuesMap[propName] === undefined) {
+    propValuesMap[propName] = [];
+  }
+  // on n’ajoute que si la valeur n’y est pas déjà
+  if (propValuesMap[propName].indexOf(value) === -1) {
+    propValuesMap[propName].push(value);
+  }
+}
+
+
+
+// 1. Récupération de tous les noms de propriétés existantes
+var propertyHash = [];
+$("archimate-diagram-model").each(function(theView) {
+    // 1) on récupère d’abord les propriétés *de la vue* elle-même
+    var viewProps = theView.prop();          // tableau de noms de propriétés
+    viewProps.forEach(function(propName) {
+        var value = theView.prop(propName);  // valeur de la propriété
+        propertyHash[propName] = propertyHash[propName] || {};
+        propertyHash[propName][value] = 1;
+    });
+
+    $(theView).find().each(function(e) {
+        theProps = e.prop();
+        theProps.forEach(function(propName) {
+            var value = e.prop(propName);  // valeur de la propriété
+            propertyHash[propName] = propertyHash[propName] || {};
+            propertyHash[propName][value] = 1;
+        });
+    })
+})
+
+var propNames = [];
+for (var propName in propertyHash) {
+    if (propertyHash.hasOwnProperty(propName)) {
+        propNames.push(propName);
+    }
+}
+// enfin on extrait juste la liste des noms de propriétés uniques
+var propNames = Object.keys(propertyHash);
+
+// 2. On propose d’abord l’option de créer une nouvelle propriété
+propNames.sort();
+var C_NEWPROP = "<Nouvelle propriété>";
+propNames.unshift(C_NEWPROP);
+
+// 3. Affichage du promptSelection
+var choice = window
+  .promptSelection(
+    "Sélectionnez la propriété à modifier ou créer :",
+    propNames
+  )
+  .toString();
+
+  
+// 4. Si l’utilisateur choisit “<Nouvelle propriété>”, on redemande un nom
+if (choice === C_NEWPROP) {
+    var propName = choice === C_NEWPROP
+    ? window.prompt("Nom de la nouvelle propriété :", "")
+    : choice;
+
+    choice = C_NEWVALUE;
+} else {
+    propName = choice
+
+    // 5. Propriété existante --> on récupère les valeurs
+    var propValues = [];
+    for (var propValue in propertyHash[propName]) {
+        if (propertyHash[propName].hasOwnProperty(propValue)) {
+            propValues.push(propValue);
+        }
+    }
+    propValues.sort();
+    var C_NEWVALUE = "<Nouvelle valeur>";
+    propValues.unshift(C_NEWVALUE);
+
+    // 6. On demande à valeur à appliquer
+    var choice = window
+    .promptSelection(
+        "Sélectionnez la valeur à appliquer ou la nouvelle valeur pour '" + propName + "':",
+        propValues
+    )
+    .toString();
+}
+
+var propValue = choice === C_NEWVALUE
+    ? window.prompt("Nouvelle valeur pour '" + propName +  "' :", "")
+    : choice;
+
+if (propValue != null) {
+    // 7. On applique à chaque élément (création ou mise à jour)
+    $(selection).each(function(elem) {
+      elem.prop(propName, propValue, false);
+    });
+    console.log(
+      "Propriété '" + propName + "' définie sur '" + propValue + "' pour " +
+      selection.length + " élément(s)."
+    );
+}
+

@@ -1,0 +1,120 @@
+﻿console.clear();
+load(__DIR__ + "..\\library\\coloring.ajs");
+//load(__DIR__ + "config\\VdL_HeatmapConfig.ajs");
+
+// Find DiagramComponents for a given element in a given view
+var getDiagramComponents = function(v, e) {
+    return $(v).find("concept").filter(function(o) {
+        return o.concept.id == e.id;
+    });
+}
+
+/* 
+================================================
+Run formatting	
+================================================ 
+*/
+var coloring = [
+	{ min: -1, max: -1, fillColor: "#DDDDDD", fontColor: "#999999", iconColor: "#999999"  },  //NE
+    { min: 0, max: 0.09, fillColor: "#FF0000", fontColor: "#000000", iconColor: "#000000" },  //NI
+    { min: 0.10, max: 0.49, fillColor: "#FFFF00", fontColor: "#000000", iconColor: "#000000"  },  //PI
+    { min: 0.50, max: 0.89, fillColor: "#B5E6A2", fontColor: "#000000", iconColor: "#000000"  },  //LI
+    { min: 0.90, max: 1, fillColor: "#3C7D22", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }  //FI
+];
+
+var scoreRef = {};
+//scoreRef["NE"] = -1;
+scoreRef["0-NI"] = 0;
+scoreRef["1-PI"] = 1;
+scoreRef["2-LI"] = 2;
+scoreRef["3-FI"] = 3;
+
+var scoreProperty = "assessmentScore";
+
+var activeView = $(selection).filter("archimate-diagram-model").first();
+
+var assessedElementsType = ["capability"];
+
+var assessmentElements = ["GP1.1 - Perform specific practices"
+						, "GP2.1 - Establish organizational policy"
+						, "GP2.2 - Plan the process"
+						, "GP2.3 - Provide resources"
+						, "GP2.4 - Assign responsibility"
+						, "GP2.5 - Train people"
+						, "GP2.6 - Configuration management"
+						, "GP2.7 - Involve stakeholders"
+						, "GP2.8 - Monitor and control"
+						, "GP2.9 - Evaluate adherence"
+						, "GP2.10 - Review with high level management"
+						, "GP3.1 - Establish the process"
+						, "GP3.2 - Collect and improve"];
+					
+var relationAssessmentType = ["influence-relationship"];
+var weightProperty = "weight (%)";
+var currentElement = "";
+//var score = 0;
+
+// Compute score
+$(activeView).find().not("relationship").not("diagram-model-group").not("diagram-model-note").each(function(e) {
+	if (assessedElementsType.indexOf(e.type) > -1) {
+		var currentScore = null;
+		var maxScore = null;
+		var assessmentComplete = true;
+		var countAssessmentRelations = 0;
+		
+		$(e.concept).rels().each(function(r) {
+			if ( relationAssessmentType.indexOf(r.type) > -1 &&
+				 assessmentElements.indexOf(r.target.name) > -1) {
+				countAssessmentRelations++;
+				if (r.name == "") {
+					assessmentComplete = false;
+				} else if (!isNaN(scoreRef[ r.name ])) {
+					currentScore = currentScore + (parseInt(r.target.prop(weightProperty))/100 * scoreRef[ r.name ]);
+					maxScore = maxScore + (parseInt(r.target.prop(weightProperty))/100 * scoreRef["3-FI"]);
+				} 
+			}
+		});
+		
+		if (!assessmentComplete || countAssessmentRelations == 0) {
+			e.prop(scoreProperty, "", false);
+		} else if (currentScore !== null ) {
+			e.prop(scoreProperty, (currentScore/maxScore).toFixed(2), false);
+		} else {
+			e.prop(scoreProperty, "NE", false);
+		}			
+
+		//console.log(e.name + ": " + $(e.concept).outRels("influence-relationship").objectRefs().size());
+	}
+});
+
+
+
+// Assign color
+$(activeView).find().not("relationship").not("diagram-model-group").not("diagram-model-note").each(function(e) {
+	if (assessedElementsType.indexOf(e.type) > -1) {
+		if (e.prop(scoreProperty) == "" || e.prop(scoreProperty) === null) {
+console.log(e.name + " / " + e.prop(scoreProperty) + " - " + isNaN(e.prop(scoreProperty)));
+			e.fillColor = null;
+			e.fontColor = null;
+			e.iconColor = null;
+		} else {
+console.log(e.name + " - " + e.prop(scoreProperty));
+			if (e.prop(scoreProperty) == "NE") {
+				e.fillColor = coloring[0].fillColor;
+				e.fontColor = coloring[0].fontColor;
+				e.iconColor = coloring[0].iconColor;
+			} else {
+				for (var value in coloring) {
+					if ( parseFloat(coloring[value].min) <= parseFloat(e.prop(scoreProperty)) && 
+						 parseFloat(e.prop(scoreProperty)) <= parseFloat(coloring[value].max)) {
+	//					console.log("coloring " + e.name);
+						e.fillColor = coloring[value].fillColor;
+						e.fontColor = coloring[value].fontColor;
+						e.iconColor = coloring[value].iconColor;
+					}
+				}
+			}
+		}
+	}
+});
+

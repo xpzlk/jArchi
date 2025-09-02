@@ -1,0 +1,11 @@
+﻿console.clear();
+
+selection.filter("relationship").each(function(r) {
+	r.name = "NE";
+	//r.specialization = "ITILAssessment";
+	//console.log(r.specialization);
+});
+
+//selection.each(function(e) {
+//	console.log(e.name);
+//});

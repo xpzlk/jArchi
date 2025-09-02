@@ -1,0 +1,5 @@
+﻿load(__DIR__ + "archi2doc_v2.ajs");
+
+var viewList = null;
+
+main();

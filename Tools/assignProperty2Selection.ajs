@@ -1,0 +1,91 @@
+﻿/*
+ * Assign a property and a value to the selection of items
+ */
+console.clear();
+console.show();
+console.log("Assign property/value to selection");
+
+// 1. Récupération de tous les noms de propriétés existantes
+var propertyHash = [];
+$("archimate-diagram-model").each(function(theView) {
+    $(theView).find().not("relationship").each(function(e) {
+        theProps = e.prop();
+        for (var i=0; i<theProps.length; i++) {
+            if (propertyHash[theProps[i]]) {
+                propertyHash[theProps[i]][[e.prop(theProps[i])]]=1;
+            }
+            else
+            {
+                newArray = [];
+                newArray[e.prop(theProps[i])]=1;
+                propertyHash[theProps[i]]=newArray;
+            }
+            
+        }
+    })
+})
+
+var propNames = [];
+var i=1;
+
+for (var propName in propertyHash) {
+    if (propertyHash.hasOwnProperty(propName)) {
+        propNames.push(propName);
+    }
+}
+
+
+
+// 2. On propose d’abord l’option de créer une nouvelle propriété
+propNames.sort();
+propNames.unshift("<Nouvelle propriété>");
+
+// 3. Affichage du promptSelection
+var choice = window
+  .promptSelection(
+    "Sélectionnez la propriété à modifier ou créer :",
+    propNames
+  )
+  .toString();
+  
+  
+// 4. Si l’utilisateur choisit “<Nouvelle propriété>”, on redemande un nom
+var propName = choice === "<Nouvelle propriété>"
+  ? window.prompt("Nom de la nouvelle propriété :", "")
+  : choice;
+
+console.log(choice);
+
+// 5. On demande la valeur à appliquer
+if (propName) {
+  var propValue = window.prompt("Valeur de la propriété :", "");
+  if (propValue != null) {
+    // 6. On applique à chaque élément (création ou mise à jour)
+    $(selection).each(function(elem) {
+      elem.prop(propName, propValue, false);
+    });
+    console.log(
+      "Propriété '" + propName + "' définie sur '" + propValue + "' pour " +
+      selection.length + " élément(s)."
+    );
+  }
+}
+
+
+
+//function assignProp(item, propName, defaultPropValue) {
+//	//if (item.prop(propName) == null) {	/* Property does not exists, create it with default value */
+//		item.prop(propName, defaultPropValue, false)
+//	//} 
+//}
+//
+//
+//var promptTxt = "Nom de la propriété:\n";
+//propName = window.prompt(promptTxt, "");
+//
+//var promptTxt = "Valeur de la propriété\n"
+//propValue = window.prompt(promptTxt, "");
+//
+//$(selection).each(function(element) {
+//	assignProp(element, propName, propValue);	
+//});

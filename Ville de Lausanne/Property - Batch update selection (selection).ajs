@@ -1,0 +1,39 @@
+﻿/*
+ * New Archi Script
+ */ 
+console.show();
+console.clear();
+console.log("New Archi Script");
+
+var promptTxt = "Please select the property to set:\n";
+var promptTxt = promptTxt + "1 - Couverture actuelle (Muséris) - Evaluation\n"
+var promptTxt = promptTxt + "2 - Couverture attendue - Evaluation\n"
+var promptTxt = promptTxt + "3 - Applicable MRV\n"
+var promptTxt = promptTxt + "4 - Applicable CAB\n"
+var promptTxt = promptTxt + "5 - Applicable MHL"
+var selectedProperty = window.prompt(promptTxt, "");
+
+if (selectedProperty == 1) {
+	selectedAttribute = "Couverture actuelle (Muséris) - Evaluation"
+} else if (selectedProperty == 2) {
+	selectedAttribute = "Couverture attendue - Evaluation"
+} else if (selectedProperty == 3) {
+	selectedAttribute = "Applicable MRV"
+} else if (selectedProperty == 4) {
+	selectedAttribute = "Applicable CAB"
+} else if (selectedProperty == 5) {
+	selectedAttribute = "Applicable MHL"
+} else {
+	window.alert("Property to assign not valid!");
+	selectedAttribute = ""
+}
+
+
+if (selectedAttribute !== "") {
+	var promptTxt = "Please select the value to assign to property '" + selectedAttribute + "':";
+	var selectedValue = window.prompt(promptTxt, "");
+
+	$(selection).each(function(element) {
+		element.prop(selectedAttribute, selectedValue, false);
+	})
+} 

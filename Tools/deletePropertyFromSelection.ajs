@@ -1,0 +1,16 @@
+﻿/*
+ * Delete property from the selection of items
+ */
+console.log("Delete property from selection");
+
+function deleteProp(item, propName) {
+	item.removeProp(propName);
+}
+
+
+var promptTxt = "Property name:\n";
+propName = window.prompt(promptTxt, "");
+
+$(selection).each(function(element) {
+	deleteProp(element, propName);	
+});

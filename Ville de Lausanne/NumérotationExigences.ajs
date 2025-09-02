@@ -1,0 +1,77 @@
+﻿console.clear();
+console.show();
+console.log("=======================================");
+console.log("==  Numérotation des exigences       ==");
+console.log("=======================================");
+
+var view = selection.parents().filter('archimate-diagram-model').first();
+
+elements = selection.filter('element');
+e1 = selection.filter('element').first();
+console.log("Exigence traitée: " + e1.name);
+
+assignReqProp(e1);
+
+console.log("Done!");
+
+function assignReqProp(elt) {
+	$(elt).outRels("composition-relationship").each(function(r) { 
+		if (r.target.type == "requirement") {
+			console.log("Exigence cible traitée: " + r.target.name);
+			if (r.target.prop("reqID.prefix") !== null) {
+				var reqIDPrefix = r.target.prop("reqID.prefix");
+				r.target.prop("reqID", elt.prop("reqID") + "." + reqIDPrefix);
+				r.target.labelExpression = "${property:reqID} - ${name}";
+				
+				assignReqProp(r.target);
+			}
+		}	
+	});	
+
+
+	var appFunctions = [];
+	$(elt).inRels("realization-relationship").each(function(r) {
+		if (r.source.type == "application-function") {
+			appFunctions.push( r.source );
+		}
+	});
+	appFunctions.sort(sortByPosition);
+
+	var i;
+	//$(elt).inRels("realization-relationship").each(function(r) { 
+	for (i = 0; i < appFunctions.length; ++i) {
+		//console.log(appFunctions[i].name);
+		appFunctions[i].prop("reqID", elt.prop("reqID") + "." + (i+1));
+		appFunctions[i].labelExpression = "${property:reqID} - ${name}";
+	}
+}
+
+
+function sortByPosition(a, b) {
+	var aX = a.bounds.x;
+	var bX = b.bounds.x; 
+	var aY = a.bounds.y;
+	var bY = b.bounds.y;
+
+	var result = 0;
+	
+	if (aX < bX) {
+		if (aY < bY) { result = -1 };
+		if (aY == bY) { result = -1 };
+		if (aY > bY) { result = -1 }; // 1 pour une lecture de gauche à droite / -1 pour une lecture en colonne de haut en bas
+	} 
+	
+	if (aX == bX) {
+		if (aY < bY) { result = -1 };
+		if (aY == bY) { result = 0 };
+		if (aY > bY) { result = 1 };
+	}
+	
+	if (aX > bX) {
+		if (aY < bY) { result = 1 }; // -1 pour une lecture de gauche à droite / 1 pour une lecture en colonne de haut en bas
+		if (aY == bY) { result = 1 };
+		if (aY > bY) { result = 1 };
+	}
+	
+	return result;
+}

@@ -1,0 +1,79 @@
+﻿console.clear();
+console.show();
+console.log("=======================================");
+console.log("==  Numérotation des exigences       ==");
+console.log("=======================================");
+
+var view = selection.parents().filter('archimate-diagram-model').first();
+
+elements = selection.filter('element');
+e1 = selection.filter('element').first();
+console.log("Elément traitée: " + e1.name);
+
+assignReqProp(e1);
+
+console.log("Done!");
+
+function assignReqProp(elt) {
+	$(elt).outRels("composition-relationship").each(function(r) { 
+		if (r.target.type == "business-object") {
+			r.target.prop("compétition") !== null
+			r.target.prop("compétition", elt.prop("compétition"));
+			r.target.prop("compétitionID", elt.prop("compétitionID"));
+			r.target.labelExpression = "${property:compétitionID} - ${name}";
+				
+			assignReqProp(r.target);
+			}
+		});	
+
+
+	var children = [];
+	$(elt).outRels("composition-relationship").each(function(r) {
+		if (r.target.type == "business-object") {
+			children.push( r.target );
+		}
+	});
+	children.sort(sortByPosition);
+
+	var i;
+	//$(elt).inRels("realization-relationship").each(function(r) { 
+	for (i = 0; i < children.length; ++i) {
+		console.log(children[i].name);
+		if (elt.prop("articleNum") == null) {
+			children[i].prop("articleNum", "" + (i+1));
+		} else {
+			children[i].prop("articleNum", elt.prop("articleNum") + "." + (i+1));
+		}
+		children[i].labelExpression = "${property:compétitionID}.${property:articleNum} - ${name}";
+	}
+}
+
+
+function sortByPosition(a, b) {
+	var aX = a.bounds.x;
+	var bX = b.bounds.x; 
+	var aY = a.bounds.y;
+	var bY = b.bounds.y;
+
+	var result = 0;
+	
+	if (aX < bX) {
+		if (aY < bY) { result = -1 };
+		if (aY == bY) { result = -1 };
+		if (aY > bY) { result = -1 }; // 1 pour une lecture de gauche à droite / -1 pour une lecture en colonne de haut en bas
+	} 
+	
+	if (aX == bX) {
+		if (aY < bY) { result = -1 };
+		if (aY == bY) { result = 0 };
+		if (aY > bY) { result = 1 };
+	}
+	
+	if (aX > bX) {
+		if (aY < bY) { result = 1 }; // -1 pour une lecture de gauche à droite / 1 pour une lecture en colonne de haut en bas
+		if (aY == bY) { result = 1 };
+		if (aY > bY) { result = 1 };
+	}
+	
+	return result;
+}

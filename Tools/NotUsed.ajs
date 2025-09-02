@@ -1,0 +1,41 @@
+﻿// tags unused elements and relationships
+//
+// Requires jArchi - https://www.archimatetool.com/blog/2018/07/02/jarchi/
+//
+// This script will delete any element or relationship not used in at least one view
+//
+// (c) 2020 Jean-Baptiste Sarrodie
+console.clear();
+
+//var response = window.confirm("This script will tag any element or relationship not used in at least one view. Continue?");
+var response = window.promptSelection("Which action would you like to perform?", ["Only tag elements", "[WARNING] Delete tagged elements"] ).toString();
+
+switch (response.toString()) {
+	case "Only tag elements":
+		$("concept").each(function(c) {
+			if($(c).objectRefs().isEmpty()) {
+				if (! c.name.match(/^\[NOT USED\] .*/) ) {
+					c.name = '[NOT USED] ' + c.name;
+				}
+			} else {
+				c.name = c.name.replace('[NOT USED] ', '') ;
+			}
+		});
+	break;
+
+	case "[WARNING] Delete tagged elements":
+		var response = window.confirm("This action will definitely deleted all elements tagged as '[NOT USED]'. Continue?");
+		if (response) {
+			$("concept").each(function(c) {
+				if (c.name.match(/^\[NOT USED\] .*/) ) {
+					c.delete();
+				}
+			});
+		}
+	break;
+
+	default:
+		exit();
+}
+
+

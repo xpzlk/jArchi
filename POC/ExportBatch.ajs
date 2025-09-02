@@ -1,0 +1,145 @@
+﻿// jArchi Script - Export CSV de plusieurs vues
+// Configuration
+const exportFolder = "C:/Users/xpzlk/Downloads/"; // <-- A adapter selon ton système
+const mergeViews = true; // true = fusionne tout en un seul CSV
+const viewNames = ["Acquérir et enregistrer - Exigences" 
+				  ,"Assurer et indemniser - Exigences",
+				  ,"Evaluer la valeur financière d'un objet - Exigences"
+				  ,"Gérer les références bibliographiques - Exigences"
+				  ,"Conserver et restaurer les collections - Exigences"
+				  ,"Gérer l'état des objets et leur évaluation technique - Exigence"
+				  ,"Gérer les dommages et pertes - Exigences"
+				  ,"Gérer les droits - Exigences"
+				  ,"Gérer les reproductions - Exigences"
+				  ,"Gérer le colisage et le matériel - Exigences"
+				  ,"Gérer les emplacements et les déplacements - Exigences"
+				  ,"Emprunter un objet - Exigences"
+				  ,"Gérer les entrées - Exigences"
+				  ,"Examiner les collections - Exigences"
+				  ,"Inventorier et cataloguer les objets - Exigences"
+				  ,"Planifier les mesures d'urgence pour les collections - Exigences"
+				  ,"Qualité Produit - Adéquation fonctionnelle - Contrôle de vocabulaire"
+				  ,"Qualité Produit - Adéquation fonctionnelle - Identification/traçabilité/alertes/workflow/Géo"
+				  ,"Qualité Produit - Adéquation fonctionnelle - Import/Export"
+				  ,"Qualité Produit - Adéquation fonctionnelle - Multimédia"
+				  ,"Qualité Produit - Adéquation fonctionnelle - Rapports"
+				  ,"Qualité Produit - Adéquation fonctionnelle - Recherche"
+				  ,"Qualité Produit - Adéquation fonctionnelle - Traitements par lots/Qualité"
+				  ,"Qualité Produit - Usabilité"
+				  ,"Personnes - Exigences"
+				  ,"Gérer les prêts d'objets - Exigences"
+				  ,"Récoler les objets - Exigences"
+				  ,"Retirer de l'inventaire et aliéner - Exigences"
+				  ,"Gérer les sorties - Exigences"
+				  ,"Gérer l'utilisation des collections (recherches scientifiques) - Exigences"
+				  ,"Gérer l'utilisation des collections - Exigences"
+				   ]; // <-- Noms des vues à exporter
+
+// Dépendance PapaParse
+load(__DIR__ + "lib/papaparse.min.js");
+
+console.show();
+console.clear();
+
+// En-têtes CSV
+var conceptHeaders = ["View", "Name", "Documentation", "UID", "Type", "Specialization"];
+var relationshipHeaders = ["View", "Relationship ID", "From Name", "From Type", "Relationship Type", "Specialization", "To Name", "To Type", "Relationship Name", "Relationship Documentation"];
+
+
+function exportView(view, globalConcepts, globalRels) {
+    var conceptHashMap = {};
+    var theData = [];
+    var theRelationshipData = [];
+    
+    $(view).find().not("relationship").each(function(e) {
+        var concept = e.concept;
+        if (!concept || !concept.name || conceptHashMap[concept.id]) return;
+        conceptHashMap[concept.id] = true;
+      
+        var row = {
+			"View": view.name,
+            "Name": concept.name,
+            "Documentation": concept.documentation || "",
+            "UID": concept.id,
+            "Type": concept.type,
+            "Specialization": concept.specialization || ""
+        };
+
+        conceptHeaders.slice(6).forEach(function(p) {
+            row[p] = concept.prop(p) || "";
+        });
+
+        concept.prop().forEach(function(p) {
+            if (conceptHeaders.indexOf(p) === -1) {
+                conceptHeaders.push(p);
+                row[p] = concept.prop(p);
+            }
+        });
+
+        theData.push(row);
+
+        if (mergeViews) globalConcepts.push(row);
+    });
+
+    $(view).find("relationship").each(function(rel) {
+        var row = {
+			"View": view.name,
+            "Relationship ID": rel.id,
+            "From Name": rel.source.name,
+            "From Type": rel.source.type,
+            "Relationship Type": rel.type,
+            "Specialization": rel.specialization || "",
+            "To Name": rel.target.name,
+            "To Type": rel.target.type,
+            "Relationship Name": rel.name,
+            "Relationship Documentation": rel.documentation || ""
+        };
+        theRelationshipData.push(row);
+        if (mergeViews) globalRels.push(row);
+    });
+
+
+    if (!mergeViews) {
+        writeCSV(exportFolder + sanitize(view.name) + ".csv", conceptHeaders, theData);
+        writeCSV(exportFolder + sanitize(view.name) + "-Relations.csv", relationshipHeaders, theRelationshipData);
+    }
+}
+
+function writeCSV(path, headers, data) {
+    var csv = Papa.unparse({fields: headers, data: data});	
+    $.fs.writeFile(path, "\uFEFF" + csv);
+    console.log("✅ Exported: " + path);
+}
+
+function sanitize(name) {
+	return name;
+    //return name.replace(/[^a-zA-Z0-9-_]/g, "_");
+}
+
+// Exécution principale
+var viewsToExport = [];
+viewNames.forEach(function(name) {
+    var found = $(model).find("archimate-diagram-model").filter(function(v) {
+        return v.name == name;
+    }).first();
+    if (found) {
+        viewsToExport.push(found);
+    } else {
+        console.log("❌ Vue non trouvée: " + name);
+    }
+});
+
+var globalConcepts = [];
+var globalRels = [];
+
+viewsToExport.forEach(function(v) {
+    exportView(v, globalConcepts, globalRels);
+});
+
+if (mergeViews) {
+    writeCSV(exportFolder + "ExportFusion.csv", conceptHeaders, globalConcepts);
+    writeCSV(exportFolder + "ExportFusion-Relations.csv", relationshipHeaders, globalRels);
+    console.log("✅ Fusion terminée");
+}
+
+console.log("🎉 Export terminé pour " + viewsToExport.length + " vue(s).");

@@ -1,0 +1,44 @@
+﻿var theView = $(selection).filter("archimate-diagram-model").first();
+if (theView) {
+    $(theView).find("assessment").each(function(e) {
+		$(e).rels("influence-relationship").each(function(r) {
+			console.log(e.name + " - " + "...:" + r.name);
+			switch(r.name) {
+			case "NE":
+				e.fillColor = "#DDDDDD"; 
+				e.fontColor = "#999999";
+				e.iconColor = e.fontColor;
+			break;
+
+			case "0-NI":
+				e.fillColor = "#FF0000"; 
+				e.fontColor = "#FFFFFF";
+				e.iconColor = e.fontColor;
+			break;
+			
+			case "1-PI":
+				e.fillColor = "#FFFF00"; 
+				e.fontColor = "#000000";
+				e.iconColor = e.fontColor;
+			break;
+
+			case "2-LI":
+				e.fillColor = "#B5E6A2"; 
+				e.fontColor = "#000000";
+				e.iconColor = e.fontColor;
+			break;
+
+			case "3-FI":
+				e.fillColor = "#3C7D22"; 
+				e.fontColor = "#FFFFFF";
+				e.iconColor = e.fontColor;
+			break;
+
+			default:
+				e.fillColor = null;
+				e.fontColor = null;
+				e.iconColor = null;
+		}
+		});
+    })
+}

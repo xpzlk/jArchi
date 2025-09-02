@@ -1,0 +1,25 @@
+﻿/*
+ * Assign a property and a value to the selection of items
+ */
+console.clear();
+console.show();
+console.log("Resize selection");
+
+function format(item) {
+	item.bounds = {width: newWidth, height: newHeight};
+	item.textAlignment = textAlignment;
+}
+
+
+var newWidth = 250;
+var newHeight = 25;
+/*
+TEXT_ALIGNMENT.LEFT (value of 1)
+TEXT_ALIGNMENT.CENTER (value of 2)
+TEXT_ALIGNMENT.RIGHT (value of 4)
+*/
+var textAlignment = 1;
+
+$(selection).each(function(e) {
+	format(e);	
+});

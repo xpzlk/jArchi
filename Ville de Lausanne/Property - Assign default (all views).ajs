@@ -1,0 +1,66 @@
+﻿/*
+ * New Archi Script
+ */
+console.show();
+console.clear();
+console.log("New Archi Script");
+
+function assignProp(item, propName, defaultPropValue) {
+	if (item.prop(propName) == null) {	/* Property does not exists, create it with default value */
+		item.prop(propName, defaultPropValue, false)
+		/* console.log(item.name + ": " + item.prop(propName)); */
+	}
+		
+	/*
+	if (item.type == "business-object" || item.type == "business-process") {
+		 
+	}
+	*/
+}
+
+
+
+$("business-object").each(function(element) {
+	assignProp(element, "Couverture actuelle (Muséris) - Evaluation", "0-Non couvert");
+	assignProp(element, "Couverture actuelle (Muséris) - Commentaire", "");
+	assignProp(element, "Couverture attendue - Evaluation", "");
+	assignProp(element, "Couverture attendue - Commentaire", "");
+	assignProp(element, "Applicable MRV", "Oui");
+	assignProp(element, "Applicable CAB", "Oui");
+	assignProp(element, "Applicable MHL", "Oui");	
+});
+
+
+$("business-process").each(function(element) {
+	assignProp(element, "Couverture actuelle (Muséris) - Evaluation", "0-Non couvert");
+	assignProp(element, "Couverture actuelle (Muséris) - Commentaire", "");
+	assignProp(element, "Couverture attendue - Evaluation", "");
+	assignProp(element, "Couverture attendue - Commentaire", "");
+	assignProp(element, "Applicable MRV", "Oui");
+	assignProp(element, "Applicable CAB", "Oui");
+	assignProp(element, "Applicable MHL", "Oui");	
+});
+
+$("business-event").each(function(element) {
+	assignProp(element, "Couverture actuelle (Muséris) - Evaluation", "0-Non couvert");
+	assignProp(element, "Couverture actuelle (Muséris) - Commentaire", "");
+	assignProp(element, "Couverture attendue - Evaluation", "");
+	assignProp(element, "Couverture attendue - Commentaire", "");
+	assignProp(element, "Applicable MRV", "Oui");
+	assignProp(element, "Applicable CAB", "Oui");
+	assignProp(element, "Applicable MHL", "Oui");	
+});
+
+
+$("view").each(function(view) {
+	assignProp(view, "viewType", "");
+	
+	console.log(view.name + " " + view.prop("viewType"));
+	
+	if (view.prop("viewType") == "SIPOC" || view.prop("viewType") == "RACI") {
+		assignProp(view, "Date révision", "<Date de révision du modèle>");
+		assignProp(view, "Référence atelier", "<Nom de l'atelier>");
+		assignProp(view, "Statut", "<Brouillon>");
+	}	
+});
+

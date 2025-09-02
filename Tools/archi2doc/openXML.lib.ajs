@@ -1,0 +1,43 @@
+﻿function newPage() {
+	output = "<w:p>";
+    output += "\n\t<w:r>";
+	output += "\n\t\t<w:br w:type=\"page\"/>";
+    output += "\n\t</w:r>";
+	output += "\n</w:p>";
+	
+	return output;
+}
+
+function newPortraitSection() {
+	return newSection( "portrait" );
+}
+
+
+function newLandscapeSection() {
+	return newSection( "landscape" );
+}
+
+
+function newSection( layout ) {
+	var layoutWidth = "11900"; 
+	var layoutHeight = "16840";
+	
+	if (layout == "landscape") {
+		var tmp = layoutWidth;
+		layoutWidth = layoutHeight; 
+		layoutHeight = tmp;
+	}
+	
+	output = newPage();
+    
+	output += "\n<w:p>";
+    output += "\n\t<w:pPr>";
+    output += "\n\t\t<w:sectPr>";
+    output += "\n\t\t\t<w:pgSz w:w=\"" + layoutWidth + "\" w:h=\"" + layoutHeight + "\" w:orient=\"" + layout + "\"/>";
+    output += "\n\t\t</w:sectPr>";
+    output += "\n\t</w:pPr>";
+	output += "\n</w:p>";
+
+    return output;
+}
+

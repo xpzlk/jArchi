@@ -1,0 +1,76 @@
+﻿console.clear();
+console.show();
+
+$(selection).each(function(elem) {
+  var estimateOp = parseInt(elem.prop("Budget prévisionnel (estimation optimiste)"));
+  var estimatePes = parseInt(elem.prop("Budget prévisionnel (estimation pessimiste)"));
+  
+  // Récupération des budgets
+  var years = [2026, 2027, 2028, 2029, 2030, 2031];
+  var budgets = {};
+  years.forEach(year => {
+	budgets[year] = parseInt(elem.prop(`Budget_${year}`));
+  });
+
+  var estimateMedian = parseInt((estimateOp + estimatePes) / 2);
+  var estimatePERT = parseInt((estimateOp + 4 * estimateMedian + estimatePes) / 6);
+  var estimateTriangular = parseInt((estimateOp + 2 * estimatePes) / 3);
+  var ratioRecurrentCost = parseInt(elem.prop("Coûts pérennes (ratio)"));
+  var ratioExternalCost = parseInt(elem.prop("Coûts externes (ratio)"));
+  
+  // Calcul des coûts annuels selon méthode PERT
+  var estimateRef = estimatePERT;
+  var costsPERT = {};
+  years.forEach(year => {
+	costsPERT[year] = parseInt(budgets[year] * estimateRef / 100);
+  });
+  
+  // Calcul des coûts internes annuels selon méthode PERT
+  var iCostsPERT = {};
+  years.map(year => {
+    iCostsPERT[year] = parseInt(costsPERT[year] * (100 - ratioExternalCost) / 100);
+  });
+
+  // Calcul des coûts externes annuels selon méthode PERT
+  var eCostsPERT = {};
+  years.map(year => {
+    eCostsPERT[year] = parseInt(costsPERT[year] * ratioExternalCost / 100);
+  });
+
+  // Calcul des coûts récurrents annuels selon méthode PERT
+  var rCostsPERT = { 2026: 0 };
+  for (let year = 2027; year <= 2032; year++) {
+	let previousYear = year - 1;
+	rCostsPERT[year] = rCostsPERT[previousYear] + parseInt(costsPERT[previousYear] * ratioRecurrentCost / 100);
+  }
+
+  // Ajout des propriétés
+  elem.prop("Estimation PERT", estimatePERT, false);
+  years.forEach(year => {
+    elem.prop("Cost_" + year + " (PERT)", costsPERT[year], false);
+    elem.prop("Cost_internal_" + year + " (PERT)", iCostsPERT[year], false);
+    elem.prop("Cost_external_" + year + " (PERT)", eCostsPERT[year], false);
+    elem.prop("Recurrent_Cost_" + year + " (PERT)", rCostsPERT[year], false);
+  });
+
+  var year = 2032;
+  elem.prop("Recurrent_Cost_" + year + " (PERT)", rCostsPERT[year], false);
+
+  //var estimateRef = estimateTriangular;
+  //var cost26 = parseInt(budget26 / 100 * estimateRef);
+  //var cost27 = parseInt(budget27 / 100 * estimateRef);
+  //var cost28 = parseInt(budget28 / 100 * estimateRef);
+  //var cost29 = parseInt(budget29 / 100 * estimateRef);
+  //var cost30 = parseInt(budget30 / 100 * estimateRef);
+  //var cost31 = parseInt(budget31 / 100 * estimateRef);
+  
+  //elem.prop("Estimation Triangulaire", estimateTriangular, false);
+  //elem.prop("Cost_2026 (Triangular)", cost26, false);
+  //elem.prop("Cost_2027 (Triangular)", cost27, false);
+  //elem.prop("Cost_2028 (Triangular)", cost28, false);
+  //elem.prop("Cost_2029 (Triangular)", cost29, false);
+  //elem.prop("Cost_2030 (Triangular)", cost30, false);
+  //elem.prop("Cost_2031 (Triangular)", cost31, false);
+  
+ //elem.prop(propName, propValue, false);
+});

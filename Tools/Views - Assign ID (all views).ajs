@@ -1,0 +1,11 @@
+﻿/*
+ * New Archi Script
+ */
+ 
+console.show();
+console.clear();
+
+
+$("archimate-diagram-model").each(function(theView) {
+	theView.prop("id", theView.id, false);
+})

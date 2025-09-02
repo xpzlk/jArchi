@@ -1,0 +1,84 @@
+﻿console.clear();
+load(__DIR__ + "..\\library\\coloring.ajs");
+//load(__DIR__ + "config\\VdL_HeatmapConfig.ajs");
+
+
+//var response = window.confirm("This script will tag any element or relationship not used in at least one view. Continue?");
+var response = window.promptSelection("Paramètre de coloriage", ["Ownership", "Thématique"] ).toString();
+
+
+/* 
+================================================
+Run formatting	
+================================================ 
+*/
+switch (response) {
+	case "Thématique":
+		var coloring = [
+				{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Intelligence Artificielle et Automatisation", fillColor: "#AECBFA", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Cybersécurité", fillColor: "#B5EAD7", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Multi-cloud hybrid", fillColor: "#FFF3B0", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Identité Numérique et Services Dématérialisés", fillColor: "#F7C6C7", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Gouvernance des données", fillColor: "#CBAACB", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Développement Durable et Green IT", fillColor: "#FFB5A7", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Souveraineté Numérique", fillColor: "#D0F4DE", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Interopérabilité et Collaboration", fillColor: "#FFD6A5", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Dématérialisation", fillColor: "#C1E1EC", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Edge Computing", fillColor: "#E6CCFF", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Smart Cities et IoT", fillColor: "#D5ECC2", fontColor: "#000000", iconColor: "#000000"  }
+			   ,{ elementType: "work-package", propertyName: "Thématique", propertyValue: "Hybrid Workspace", fillColor: "#FFDAC1", fontColor: "#000000", iconColor: "#000000"  }
+			];
+	break;
+
+	case "Ownership":
+		var coloring = [
+				{ elementType: "application-component", propertyName: response, propertyValue: "Transversal", fillColor: "#98CF5C", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "CHANC", fillColor: "#207E7E", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "FIN", fillColor: "#C05D23", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "SCU", fillColor: "#FDD971", fontColor: "#000000", iconColor: "#000000"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "JECOS", fillColor: "#E426C5", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "RH", fillColor: "#BFD7ED", fontColor: "#000000", iconColor: "#000000"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "BAT", fillColor: "#7B7B7B", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "SEY", fillColor: "#BD9125", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "SSP", fillColor: "#3575B2", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "???", fillColor: "#000000", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "???1", fillColor: "#000000", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "???2", fillColor: "#000000", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "MEI", fillColor: "#FDE59F", fontColor: "#000000", iconColor: "#000000"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "SDIS", fillColor: "#F7251C", fontColor: "#FFFFFF", iconColor: "#FFFFFF"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "PON", fillColor: "#FF80C0", fontColor: "#000000", iconColor: "#000000"  }
+				,{ elementType: "application-component", propertyName: response, propertyValue: "CC", fillColor: "#FFFFFF", fontColor: "#000000", iconColor: "#000000"  }
+			];
+	break;
+}
+
+
+function getColoring( coloringArray, elt ) {
+	var result = null;
+	for( var i = 0, len = coloringArray.length; i < len; i++ ) {
+		if( coloringArray[i]["elementType"] === elt.type && 
+			elt.prop(coloringArray[i]["propertyName"]) === coloringArray[i]["propertyValue"] ) {
+			result = coloringArray[i];
+			break;
+		}
+	}
+	
+	return result;
+}
+
+var activeView = $(selection).filter("archimate-diagram-model").first();
+
+// Assign color
+$(activeView).find().not("relationship").not("diagram-model-group").not("diagram-model-note").each(function(e) {
+	eltColor = getColoring( coloring, e );
+	if ( eltColor != null ) {
+		e.fillColor = eltColor["fillColor"];
+		e.fontColor = eltColor["fontColor"];
+		e.iconColor = eltColor["iconColor"];
+	} else {
+		//e.fillColor = null;
+		//e.fontColor = null;
+		//e.iconColor = null;
+	}
+});
+

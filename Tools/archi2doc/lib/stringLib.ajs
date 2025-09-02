@@ -1,0 +1,7 @@
+﻿function inStr(val, listOfValues) {
+var tmpListOfValues = "";
+	
+	tmpListOfValues	= "|" + listOfValues + "|";
+	
+	return tmpListOfValues.includes("|" + val + "|");
+}

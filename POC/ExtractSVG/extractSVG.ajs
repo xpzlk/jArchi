@@ -1,0 +1,20 @@
+﻿// === CONFIGURATION ===
+var dossierExport = "C:/Users/xpzlk/Downloads/archiHTML/img"; // Remplace ce chemin selon ton système
+
+// Crée le dossier d'export s’il n'existe pas
+var dossier = new java.io.File(dossierExport);
+if (!dossier.exists()) {
+    dossier.mkdirs();
+}
+
+// === EXPORT DES VUES ===
+var vues = $('view');
+
+console.log("Nombre de vues trouvées : " + vues.length);
+
+vues.forEach(function(vue) {
+	var options = {setViewBox: false, viewBoxBounds: "0 0 1000 200", textAsShapes: false, embedFonts: true, textOffsetWorkaround: true};
+    $.model.renderViewToSVG(vue, dossierExport + "/" + vue.id + ".svg", true);
+	
+    console.log("Vue exportée : " + vue.name);
+});

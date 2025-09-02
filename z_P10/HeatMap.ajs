@@ -1,0 +1,157 @@
+﻿console.clear();
+load(__DIR__ + "..\\library\\coloring.ajs");
+//load(__DIR__ + "config\\VdL_HeatmapConfig.ajs");
+
+
+//var response = window.confirm("This script will tag any element or relationship not used in at least one view. Continue?");
+var response = window.promptSelection("Paramètre de coloriage", ["Requirement criticity", "Risks"] ).toString();
+
+
+/* 
+================================================
+Run formatting	
+================================================ 
+*/
+function generateRiskMatrixColoring(elementType) {
+	var likelihood = ["1-improbable", "2-peu probable", "3-probable", "4-très probable", "5-quasi-certain"];
+	var consequence = ["1-insignifiant", "2-mineur", "3-modéré", "4-majeur", "5-critique"];
+	
+	// Matrice des niveaux de risque (likelihood x consequence)
+	var riskMatrix = [
+		["Minor", "Minor", "Moderate", "Moderate", "Major"],        // Improbable
+		["Minor", "Moderate", "Moderate", "Major", "Critical"],        // Peu probable  
+		["Moderate", "Moderate", "Major", "Major", "Critical"],     // Probable
+		["Moderate", "Major", "Major", "Critical", "Critical"],     // Très probable
+		["Major", "Major", "Critical", "Critical", "Critical"]      // Quasi-certain
+	];
+	
+	// Couleurs pour chaque niveau de risque
+	var riskColors = {
+		"Minor": { fillColor: "#80FF80", fontColor: "#000000", iconColor: "#000000" },      // Vert clair
+		"Moderate": { fillColor: "#FFFF80", fontColor: "#000000", iconColor: "#000000" },   // Jaune
+		"Major": { fillColor: "#FF8000", fontColor: "#000000", iconColor: "#000000" },      // Orange
+		"Critical": { fillColor: "#FF4040", fontColor: "#000000", iconColor: "#000000" }    // Rouge
+	};
+	
+	var coloring = [];
+	
+	for(var i = 0; i < likelihood.length; i++) {
+		for(var j = 0; j < consequence.length; j++) {
+			var riskLevel = riskMatrix[i][j];
+			var colors = riskColors[riskLevel];
+			
+			coloring.push({
+				elementType: elementType,
+				conditions: [
+					{propertyName: "Likelihood", propertyValue: likelihood[i]},
+					{propertyName: "Consequence", propertyValue: consequence[j]}
+				],
+				fillColor: colors.fillColor,
+				fontColor: colors.fontColor,
+				iconColor: colors.iconColor
+			});
+		}
+	}
+	
+	return coloring;
+}
+
+// Usage :
+// var coloring = generateRiskMatrixColoring("requirement");
+
+switch (response) {
+	case "Requirement criticity":
+		var coloring = [
+				{ elementType: "requirement", propertyName: "Criticité", propertyValue: "Faible", fillColor: "#FEF3CD", fontColor: "#000000", iconColor: "#000000"  }
+				,{ elementType: "requirement", propertyName: "Criticité", propertyValue: "Moyenne", fillColor: "#FCE4D6", fontColor: "#000000", iconColor: "#000000"  }
+				,{ elementType: "requirement", propertyName: "Criticité", propertyValue: "Élevée", fillColor: "#FECACA", fontColor: "#000000", iconColor: "#000000"  }
+				,{ elementType: "requirement", propertyName: "Criticité", propertyValue: "Critique", fillColor: "#F87171", fontColor: "#000000", iconColor: "#000000"  }
+			];
+
+	case "Risks":
+		var coloring = generateRiskMatrixColoring("assessment");
+
+	break;
+}
+
+function getColoringAuto( coloringArray, elt ) {
+	var result = null;
+	for( var i = 0, len = coloringArray.length; i < len; i++ ) {
+		if( coloringArray[i]["elementType"] === elt.type ) {
+			
+			// Détection automatique du format
+			if( coloringArray[i]["conditions"] !== undefined ) {
+				// Nouveau format multi-conditions
+				var allConditionsMet = true;
+				for( var j = 0, condLen = coloringArray[i]["conditions"].length; j < condLen; j++ ) {
+					var condition = coloringArray[i]["conditions"][j];
+					if( elt.prop(condition["propertyName"]) !== condition["propertyValue"] ) {
+						allConditionsMet = false;
+						break;
+					}
+				}
+				if( allConditionsMet ) {
+					result = coloringArray[i];
+				}
+			} else {
+				// Ancien format simple
+				if( elt.prop(coloringArray[i]["propertyName"]) === coloringArray[i]["propertyValue"] ) {
+					result = coloringArray[i];
+				}
+			}
+		}
+	}
+	return result;
+}
+
+
+function getColoringMulti( coloringArray, elt ) {
+	var result = null;
+	for( var i = 0, len = coloringArray.length; i < len; i++ ) {
+		if( coloringArray[i]["elementType"] === elt.type ) {
+			var allConditionsMet = true;
+			for( var j = 0, condLen = coloringArray[i]["conditions"].length; j < condLen; j++ ) {
+				var condition = coloringArray[i]["conditions"][j];
+				if( elt.prop(condition["propertyName"]) !== condition["propertyValue"] ) {
+					allConditionsMet = false;
+					break;
+				}
+			}
+			if( allConditionsMet ) {
+				result = coloringArray[i];
+			}
+		}
+	}
+	return result;
+}
+
+
+function getColoring( coloringArray, elt ) {
+	var result = null;
+	for( var i = 0, len = coloringArray.length; i < len; i++ ) {
+		if( coloringArray[i]["elementType"] === elt.type && 
+			elt.prop(coloringArray[i]["propertyName"]) === coloringArray[i]["propertyValue"] ) {
+			result = coloringArray[i];
+			break;
+		}
+	}
+	
+	return result;
+}
+
+var activeView = $(selection).filter("archimate-diagram-model").first();
+
+// Assign color
+$(activeView).find().not("relationship").not("diagram-model-group").not("diagram-model-note").each(function(e) {
+	eltColor = getColoringAuto( coloring, e );
+	if ( eltColor != null ) {
+		e.fillColor = eltColor["fillColor"];
+		e.fontColor = eltColor["fontColor"];
+		e.iconColor = eltColor["iconColor"];
+	} else {
+		//e.fillColor = null;
+		//e.fontColor = null;
+		//e.iconColor = null;
+	}
+});
+

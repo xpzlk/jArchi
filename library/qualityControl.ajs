@@ -1,0 +1,148 @@
+﻿/* Check if relations between elements
+- view: view on which to perform the check
+- eltChildType: type of element to check
+- eltChildSpecialization (not used): specialization of element to check
+- eltParentType: 
+- eltParentSpecialization (not used)
+- relType: type of relation
+*/
+function view_checkLinks( view, eltChildType, eltChildSpecialization, eltParentType, eltParentSpecialization, relType ) {
+	var elements = $(view).find(eltChildType);
+	
+	if (elements.length != 0) {
+		elements.each(function(e) {
+			if ($(e).rels(relType).size() == 0) {
+				NC_create( view, e, "Missing relation " + relType + " to " + eltParentType, "[" + e.name + "] has no relationship of type " + relType + " with element of type " + eltParentType)
+			}
+			
+			$(e).rels(relType).each(function(r) {
+				if (r.target.type != eltParentType) {
+					NC_create( view, e, "Missing relation " + relType + " to " + eltParentType, "[" + e.name + "] has no relationship of type " + relType + " with element of type " + eltParentType)
+				}
+			})
+		}
+	)};
+}
+
+
+/* Check if view has a property */
+function view_checkProperty ( view, propName, propValue ) {
+	if (propValue != null) {
+		if (view.prop(propName) != propValue) {
+			NC_create( view, null, "Missing prop " + propName + " to view", "[" + view.name + "] has no property called " + propName + " with value " + propValue)
+		}
+	} else {
+		if (view.prop(propName) == null) {
+			NC_create( view, null, "Missing prop " + propName + " to view", "[" + view.name + "] has no property called " + propName + " with value " + propValue)
+		}
+	}
+}
+
+/* Check if view property is a date */
+function view_checkPropertyIsDate (view, propName) {
+	var pattern = /^([0-2][0-9])\.([0-1][1-9])\.((19|20)[0-9]{2})$/
+	if (view.prop(propName) != null) {
+		if (!pattern.test(view.prop(propName)) ){
+			NC_create( view, null, "Date format " + propName + " for view", "[" + view.name + "] property '" + propName + "' is not a valid date (" + view.prop(propName) + ")")
+		}
+	}
+}
+
+/* Assign ID property to the view */
+function view_assignPropertyID ( view ) {
+	view.prop("id", view.id, false);
+}
+
+
+/* =========================================
+   All functions related to non compliances
+   =========================================
+*/
+// Get non compliance folder (create it if it does not exist)
+function NC_getFolder() {
+	var NCFolderName = "_Model Quality Control";
+	var motivationFolder = $("folder.Motivation").first();
+
+	// Search for existing pre-existing NC folder 
+	var NCFolder = null;
+	$("folder.Motivation").children().each(function(f) {
+		if (f.name == NCFolderName) {
+			NCFolder = f;
+		}
+	});
+
+	// Pre-existing NC folder not found --> create it
+	if (NCFolder == null) { NCFolder = motivationFolder.createFolder( NCFolderName ); }
+
+	return NCFolder;
+}
+
+// Delete all non compliances present in the non compliance folder
+function NC_deleteAll(  ) {
+	$("assessment").each(function(a) {
+		if ( a.specialization == "nonCompliance" ) {
+			if ( $(a).parent() == "[folder: _Model Quality Control]" ) {
+				a.delete();
+			}
+		}
+	});
+}
+
+// Check if a non compliance already exists
+function NC_exists( view, obj, NCCode ) {
+var found = false;
+
+	$("assessment").each(function(a) {
+		if ( a.specialization == "nonCompliance" ) {
+			if (obj == null) {
+				if ( a.prop("viewID") == view.id && a.prop("objectID") == "" && a.prop("NCCode") == NCCode ) {
+					found = true;
+				}
+			} else {
+				if ( a.prop("viewID") == view.id && a.prop("objectID") == obj.id && a.prop("NCCode") == NCCode ) {
+					found = true;
+				}
+			}
+			
+		}
+	});
+
+	return found;
+}
+
+// Create a new non compliance if it does not already exists
+function NC_create( view, obj, NCCode, NCMessage) {
+	// Create specialization 1st if it does not exist
+	var spec = model.findSpecialization("nonCompliance", "assessment");
+	if ( spec == null ) { model.createSpecialization("nonCompliance", "assessment"); }
+	
+	if (!NC_exists(view, obj, NCCode)) {
+		var NCFolder = NC_getFolder();
+		if (obj != null) {
+			var nc = model.createElement("assessment", view.name + "/" + obj.name + ": " + NCCode, NCFolder);
+		} else {
+			var nc = model.createElement("assessment", view.name + ": " + NCCode, NCFolder);
+		}
+		nc.prop("viewID", view.id, false);
+		nc.prop("viewName", view.name, false);
+		if (obj != null) {
+			nc.prop("objectID", obj.id, false);
+			nc.prop("objectName", obj.name, false);
+		} else {
+			nc.prop("objectID", "", false);
+			nc.prop("objectName", "", false);
+		}
+		nc.prop("NCCode", NCCode, false);
+		nc.prop("NCMessage", NCMessage, false);
+		nc.specialization = "nonCompliance";
+		
+		logNonCompliance( NCMessage );
+	}
+}
+
+
+function logNonCompliance ( $message ) {
+	console.setTextColor(255, 64, 255);
+	console.log( "> " + $message );
+	console.setDefaultTextColor();
+}

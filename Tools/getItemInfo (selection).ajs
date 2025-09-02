@@ -1,0 +1,43 @@
+﻿console.clear();
+console.show();
+
+function UsedInViews() {
+    $(selection).each(function(e){
+        if (typeof(e.concept) !== 'undefined') {
+            if($(e.concept).objectRefs().isEmpty()) {
+	        console.setTextColor(255,0,0);
+                console.log(e.type + ' ' + e.name + " is not used in a view") ;
+                console.setDefaultTextColor();
+            }
+            $(e.concept).objectRefs().each(function(or) {
+                console.log('[' + e.type + '][' + e.name + "] is used in view: " + or.view.name);
+            });
+        } else {
+            console.setTextColor(128,128,128);
+            console.log(e.type + ' ' + e.name + ' is not an Archimate concept');
+            console.setDefaultTextColor();
+        }
+    });
+}
+
+
+$(selection).each(function(item) {
+	console.log("===============================================")
+	console.log(item.name + " (" + item.type + ")")
+	console.log("===============================================")
+	console.log("ID: " + item.id);
+	console.log("Concept ID: " + item.concept.id);
+	if (item.bounds != null) { 
+		console.log("X: " + item.bounds.x); 
+		console.log("Y: " + item.bounds.y);
+		console.log("Width: " + item.bounds.width);
+		console.log("Height: " + item.bounds.height);
+	}
+	console.log("");
+	console.log("--- Used in view ------------------------------");
+	UsedInViews();
+})
+
+
+
+
