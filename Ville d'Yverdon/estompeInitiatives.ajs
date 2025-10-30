@@ -4,10 +4,12 @@ console.show();
 
 var response = window.promptSelection("Choix de la feuille de route", ["Complète", "Intermédiaire", "Minimale"] ).toString();
 var activeOpacity = 255;
-var notActiveOpacity = 32;
+var notActiveOpacity = 16;
 var activeText = "#000000";
 var notActiveText =  "#AAAAAA";
 
+var activeView = $(selection).filter("archimate-diagram-model").first();
+$(activeView).find().not("relationship").not("diagram-model-group").not("diagram-model-note").each(function(e) {
 
 $(selection).each(function(elem) {
     switch (response) {

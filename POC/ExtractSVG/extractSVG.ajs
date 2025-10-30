@@ -1,5 +1,5 @@
 ﻿// === CONFIGURATION ===
-var dossierExport = "C:/Users/xpzlk/Downloads/archiHTML/img"; // Remplace ce chemin selon ton système
+var dossierExport = "C:/_xperrin/Professionnel/VdL/generation/img"; // Remplace ce chemin selon ton système
 
 // Crée le dossier d'export s’il n'existe pas
 var dossier = new java.io.File(dossierExport);
