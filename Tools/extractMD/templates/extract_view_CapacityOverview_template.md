@@ -1,3 +1,7 @@
+---
+title: "Capacity Overview"
+---
+
 # {{view.name}}
 
 {{view.image.png}}

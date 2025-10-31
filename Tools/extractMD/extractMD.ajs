@@ -67,11 +67,20 @@ function discoverTemplates() {
 }
 
 /**
- * Extract a readable name from template filename
+ * Extract a readable name from template filename or YAML front matter
  * @param {string} filename - Template filename
  * @returns {string} Human-readable template name
  */
 function getTemplateDisplayName(filename) {
+    // Try to read YAML front matter title
+    var templatePath = __DIR__ + "templates\\" + filename;
+    var title = extractYAMLTitle(templatePath);
+
+    if (title) {
+        return title;
+    }
+
+    // Fallback: extract from filename
     var name = filename.replace(".md", "");
 
     // Remove common prefixes
@@ -82,6 +91,43 @@ function getTemplateDisplayName(filename) {
     name = name.replace(/_/g, " ");
 
     return name;
+}
+
+/**
+ * Extract the title from YAML front matter
+ * @param {string} filePath - Path to the template file
+ * @returns {string|null} Title from YAML front matter, or null if not found
+ */
+function extractYAMLTitle(filePath) {
+    try {
+        var content = readTemplateFile(filePath);
+
+        // Check if file starts with YAML front matter (---)
+        if (!content.startsWith("---")) {
+            return null;
+        }
+
+        // Find the closing --- of the front matter
+        var secondDelimiter = content.indexOf("\n---", 3);
+        if (secondDelimiter === -1) {
+            return null;
+        }
+
+        // Extract YAML content (between the two ---)
+        var yamlContent = content.substring(4, secondDelimiter);
+
+        // Parse title field (simple regex for title: "value" or title: value)
+        var titleMatch = yamlContent.match(/title:\s*["']?([^"'\n]+)["']?/);
+
+        if (titleMatch && titleMatch[1]) {
+            return titleMatch[1].trim();
+        }
+
+        return null;
+    } catch (e) {
+        console.log("Warning: Could not read YAML front matter from " + filePath + ": " + e);
+        return null;
+    }
 }
 
 /**

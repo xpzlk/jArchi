@@ -1,3 +1,7 @@
+---
+title: "Capacity Details"
+---
+
 {{#each capabilities}}
 # {{capability.name}}
 **Intention**
