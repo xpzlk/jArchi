@@ -1,0 +1,454 @@
+/*
+ * Template Engine Library
+ *
+ * Provides template processing functionality for generating Markdown documentation
+ * from ArchiMate views using template files with {{variable}} placeholders.
+ *
+ * Version 1.0 - Initial version
+ */
+
+// =====================================================
+// File Reading Functions
+// =====================================================
+
+/**
+ * Read a template file from disk
+ * @param {string} filePath - Absolute path to the template file
+ * @returns {string} The file content as a string
+ */
+function readTemplateFile(filePath) {
+    var result = '';
+    var imports = new JavaImporter(java.net, java.lang, java.io);
+
+    with (imports) {
+        var urlObj = null;
+
+        try {
+            urlObj = new URL(filePath);
+        } catch (e) {
+            // If the URL cannot be built, assume it is a file path
+            urlObj = new URL(new File(filePath).toURI().toURL());
+        }
+
+        var reader = new BufferedReader(new InputStreamReader(urlObj.openStream(), 'UTF-8'));
+
+        var line = reader.readLine();
+        while (line != null) {
+            result += line + '\n';
+            line = reader.readLine();
+        }
+
+        reader.close();
+    }
+
+    return result;
+}
+
+// =====================================================
+// Text Processing Functions
+// =====================================================
+
+/**
+ * Escape markdown special characters in text
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeMD(text) {
+    if (text == null || text === "") {
+        return "";
+    }
+    // Escape pipe characters for markdown tables
+    return text.replace(/\|/g, "\\|");
+}
+
+/**
+ * Get property value or return "N/A" if not found
+ * @param {object} element - ArchiMate element
+ * @param {string} propName - Property name to retrieve
+ * @returns {string} Property value or "N/A"
+ */
+function getPropertyOrNA(element, propName) {
+    var value = element.prop(propName);
+    if (value == null || value === "") {
+        return "N/A";
+    }
+    return value;
+}
+
+// =====================================================
+// Template Processing Functions
+// =====================================================
+
+/**
+ * Process a template and replace all {{variable}} placeholders with actual data
+ * @param {string} template - The template content
+ * @param {object} data - Object containing the data to inject into template
+ * @returns {string} Processed template with variables replaced
+ */
+function processTemplate(template, data) {
+    var result = template;
+
+    // Replace simple variables first
+    result = replaceSimpleVariables(result, data);
+
+    // Process group sections (sections repeated for each group with its capabilities)
+    result = processGroupSections(result, data);
+
+    // Process table rows (for capabilities tables)
+    result = processTableRows(result, data);
+
+    // Process repeating sections (for elements like technologyfunction)
+    result = processRepeatingSections(result, data);
+
+    // Check for unknown variables and warn
+    warnUnknownVariables(result);
+
+    return result;
+}
+
+/**
+ * Check for remaining {{variables}} in the result and warn about them
+ * @param {string} result - Processed template
+ */
+function warnUnknownVariables(result) {
+    var unknownPattern = /\{\{([^}]+)\}\}/g;
+    var match;
+    var unknownVars = [];
+
+    while ((match = unknownPattern.exec(result)) !== null) {
+        var varName = match[1];
+        // Avoid duplicates
+        var alreadyWarned = false;
+        for (var i = 0; i < unknownVars.length; i++) {
+            if (unknownVars[i] === varName) {
+                alreadyWarned = true;
+                break;
+            }
+        }
+        if (!alreadyWarned) {
+            unknownVars.push(varName);
+        }
+    }
+
+    // Display warnings for unknown variables
+    if (unknownVars.length > 0) {
+        console.setTextColor(255, 149, 0); // Orange
+        console.log("[WARNING] Variables inconnues trouvées dans le template:");
+        for (var i = 0; i < unknownVars.length; i++) {
+            console.log("  - {{" + unknownVars[i] + "}}");
+        }
+        console.log("Ces variables n'ont pas été remplacées et apparaîtront telles quelles dans le document.");
+        console.setDefaultTextColor();
+    }
+}
+
+/**
+ * Replace simple variables like {{capability.name}}, {{view.image.png}}
+ * @param {string} template - Template content
+ * @param {object} data - Data object
+ * @returns {string} Template with simple variables replaced
+ */
+function replaceSimpleVariables(template, data) {
+    var result = template;
+
+    // Replace {{capability.name}}
+    if (data.capability) {
+        result = result.replace(/\{\{capability\.name\}\}/g, escapeMD(data.capability.name));
+        var capDoc = data.capability.documentation || "N/A";
+        result = result.replace(/\{\{capability\.documentation\}\}/g, escapeMD(capDoc));
+    } else {
+        result = result.replace(/\{\{capability\.name\}\}/g, data.viewName || "N/A");
+        result = result.replace(/\{\{capability\.documentation\}\}/g, "N/A");
+    }
+
+    // Replace {{view.image.png}}
+    if (data.imageFilename) {
+        result = result.replace(/\{\{view\.image\.png\}\}/g, "![Image](" + data.imageFilename + ")");
+        // Also support {{view.image.svg}} for backward compatibility
+        result = result.replace(/\{\{view\.image\.svg\}\}/g, "![Image](" + data.imageFilename + ")");
+    }
+
+    // Replace {{goals.name}} (plural - list of all goals)
+    if (data.goals && data.goals.length > 0) {
+        var goalsList = "";
+        for (var i = 0; i < data.goals.length; i++) {
+            goalsList += "- " + escapeMD(data.goals[i].name) + "\n";
+        }
+        result = result.replace(/\{\{goals\.name\}\}/g, goalsList.trim());
+    } else {
+        result = result.replace(/\{\{goals\.name\}\}/g, "Aucun objectif défini");
+    }
+
+    // Replace {{goal.name}} (singular - should be handled differently if needed)
+    result = result.replace(/\{\{goal\.name\}\}/g, function() {
+        if (data.goals && data.goals.length > 0) {
+            var goalsList = "";
+            for (var i = 0; i < data.goals.length; i++) {
+                goalsList += "- " + escapeMD(data.goals[i].name) + "\n";
+            }
+            return goalsList.trim();
+        }
+        return "Aucun objectif défini";
+    });
+
+    // Replace {{view.name}}
+    if (data.view) {
+        result = result.replace(/\{\{view\.name\}\}/g, escapeMD(data.view.name));
+        var viewDoc = data.view.documentation || "";
+        result = result.replace(/\{\{view\.documentation\}\}/g, escapeMD(viewDoc));
+    } else if (data.viewName) {
+        result = result.replace(/\{\{view\.name\}\}/g, escapeMD(data.viewName));
+        result = result.replace(/\{\{view\.documentation\}\}/g, "");
+    }
+
+    // Replace {{group.name}} (first group)
+    if (data.groups && data.groups.length > 0) {
+        result = result.replace(/\{\{group\.name\}\}/g, escapeMD(data.groups[0].name));
+    } else {
+        result = result.replace(/\{\{group\.name\}\}/g, "N/A");
+    }
+
+    // Replace {{groups.name}} (all groups as list)
+    if (data.groups && data.groups.length > 0) {
+        var groupsList = "";
+        for (var i = 0; i < data.groups.length; i++) {
+            groupsList += "- " + escapeMD(data.groups[i].name) + "\n";
+        }
+        result = result.replace(/\{\{groups\.name\}\}/g, groupsList.trim());
+    } else {
+        result = result.replace(/\{\{groups\.name\}\}/g, "Aucun groupe défini");
+    }
+
+    return result;
+}
+
+/**
+ * Process sections that should be repeated for each group
+ * Pattern: ## {{group.name}} ... content with {{capabilitys.*}} ...
+ * @param {string} template - Template content
+ * @param {object} data - Data object
+ * @returns {string} Template with group sections repeated
+ */
+function processGroupSections(template, data) {
+    var result = template;
+
+    // Pattern to find a section starting with ## {{group.name}}
+    // and continuing until the next ## or end of document
+    var groupSectionPattern = /##\s*\{\{group\.name\}\}([\s\S]*?)(?=\n##|$)/;
+    var match = template.match(groupSectionPattern);
+
+    if (match && data.capabilitiesByGroup && data.capabilitiesByGroup.length > 0) {
+        var sectionTemplate = match[0]; // The entire section including ## header
+        var generatedSections = "";
+
+        // For each group, generate a section
+        for (var i = 0; i < data.capabilitiesByGroup.length; i++) {
+            var groupData = data.capabilitiesByGroup[i];
+            var section = sectionTemplate;
+
+            // Replace {{group.name}} with the actual group name
+            section = section.replace(/\{\{group\.name\}\}/g, escapeMD(groupData.groupName));
+
+            // Now process the capabilities table within this section
+            // We need to replace {{capabilitys.*}} variables with only the capabilities from this group
+            var tableRowPattern = /\|([^|\n]*\{\{capabilitys\.([^}]+)\}\}[^|\n]*\|)+/g;
+            var tableMatch;
+            var rowsToReplace = [];
+
+            while ((tableMatch = tableRowPattern.exec(section)) !== null) {
+                rowsToReplace.push({
+                    fullMatch: tableMatch[0],
+                    index: tableMatch.index
+                });
+            }
+
+            // Process each table row from end to beginning
+            for (var j = rowsToReplace.length - 1; j >= 0; j--) {
+                var rowTemplate = rowsToReplace[j].fullMatch;
+                var generatedRows = "";
+
+                // Generate rows only for capabilities in THIS group
+                for (var k = 0; k < groupData.capabilities.length; k++) {
+                    var cap = groupData.capabilities[k];
+                    var row = rowTemplate;
+
+                    // Replace {{capabilitys.name}}
+                    row = row.replace(/\{\{capabilitys\.name\}\}/g, escapeMD(cap.name));
+
+                    // Replace {{capabilitys.documentation}}
+                    var capDoc = cap.documentation || "";
+                    capDoc = escapeMD(capDoc).replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+                    row = row.replace(/\{\{capabilitys\.documentation\}\}/g, capDoc);
+
+                    // Replace {{capabilitys.group}}
+                    var capGroup = cap.groupName || "Sans groupe";
+                    row = row.replace(/\{\{capabilitys\.group\}\}/g, escapeMD(capGroup));
+
+                    // Replace other properties
+                    row = row.replace(/\{\{capabilitys\.([^}]+)\}\}/g, function(fullMatch, propName) {
+                        if (propName === "name" || propName === "documentation" || propName === "group") {
+                            return fullMatch;
+                        }
+                        if (cap.element) {
+                            return getPropertyOrNA(cap.element, propName);
+                        }
+                        return getPropertyOrNA(cap, propName);
+                    });
+
+                    generatedRows += row + "\n";
+                }
+
+                // Replace the template row with generated rows
+                var beforeRow = section.substring(0, rowsToReplace[j].index);
+                var afterRow = section.substring(rowsToReplace[j].index + rowTemplate.length);
+                section = beforeRow + generatedRows.trim() + afterRow;
+            }
+
+            generatedSections += section + "\n\n";
+        }
+
+        // Replace the original section template with all generated sections
+        result = result.replace(groupSectionPattern, generatedSections.trim());
+    }
+
+    return result;
+}
+
+/**
+ * Process table rows with plural variables like {{capabilitys.name}}
+ * @param {string} template - Template content
+ * @param {object} data - Data object
+ * @returns {string} Template with table rows expanded
+ */
+function processTableRows(template, data) {
+    var result = template;
+
+    // Pattern to find table rows containing {{capabilitys.xxx}}
+    var tableRowPattern = /\|([^|\n]*\{\{capabilitys\.([^}]+)\}\}[^|\n]*\|)+/g;
+
+    var match;
+    var rowsToReplace = [];
+
+    // Find all table rows with capability variables
+    while ((match = tableRowPattern.exec(template)) !== null) {
+        rowsToReplace.push({
+            fullMatch: match[0],
+            index: match.index
+        });
+    }
+
+    // Process each table row from end to beginning (to preserve indices)
+    for (var i = rowsToReplace.length - 1; i >= 0; i--) {
+        var rowTemplate = rowsToReplace[i].fullMatch;
+        var generatedRows = "";
+
+        if (data.capabilities && data.capabilities.length > 0) {
+            // For each capability, generate a table row
+            for (var j = 0; j < data.capabilities.length; j++) {
+                var cap = data.capabilities[j];
+                var row = rowTemplate;
+
+                // Replace {{capabilitys.name}}
+                row = row.replace(/\{\{capabilitys\.name\}\}/g, escapeMD(cap.name));
+
+                // Replace {{capabilitys.documentation}}
+                // Convert newlines to <br> for table cells
+                var capDoc = cap.documentation || "";
+                capDoc = escapeMD(capDoc).replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+                row = row.replace(/\{\{capabilitys\.documentation\}\}/g, capDoc);
+
+                // Replace {{capabilitys.group}} with group name
+                var capGroup = cap.groupName || "Sans groupe";
+                row = row.replace(/\{\{capabilitys\.group\}\}/g, escapeMD(capGroup));
+
+                // Replace any other {{capabilitys.xxx}} with property values
+                row = row.replace(/\{\{capabilitys\.([^}]+)\}\}/g, function(fullMatch, propName) {
+                    if (propName === "name" || propName === "documentation" || propName === "group") {
+                        return fullMatch; // Already handled above
+                    }
+                    // Try to get property from the element
+                    if (cap.element) {
+                        return getPropertyOrNA(cap.element, propName);
+                    }
+                    return getPropertyOrNA(cap, propName);
+                });
+
+                generatedRows += row + "\n";
+            }
+        } else {
+            // No capabilities, create one row with N/A
+            var row = rowTemplate;
+            row = row.replace(/\{\{capabilitys\.([^}]+)\}\}/g, "N/A");
+            generatedRows = row + "\n";
+        }
+
+        // Replace the template row with generated rows
+        var beforeRow = result.substring(0, rowsToReplace[i].index);
+        var afterRow = result.substring(rowsToReplace[i].index + rowTemplate.length);
+        result = beforeRow + generatedRows.trim() + afterRow;
+    }
+
+    return result;
+}
+
+/**
+ * Process repeating sections for collections like technology functions
+ * @param {string} template - Template content
+ * @param {object} data - Data object
+ * @returns {string} Template with repeating sections processed
+ */
+function processRepeatingSections(template, data) {
+    var result = template;
+
+    // Find the section template for technology functions
+    // Pattern: starts with ### {{technologyfunction.name}} and ends before next ### or end of ABB Techniques section
+    var techFuncPattern = /### \{\{technologyfunction\.name\}\}([\s\S]*?)(?=###|$)/;
+    var match = template.match(techFuncPattern);
+
+    if (match) {
+        var sectionTemplate = match[0]; // The entire section including the ### header
+        var generatedSections = "";
+
+        if (data.technologyFunctions && data.technologyFunctions.length > 0) {
+            for (var i = 0; i < data.technologyFunctions.length; i++) {
+                var techFunc = data.technologyFunctions[i];
+                var section = sectionTemplate;
+
+                // Replace {{technologyfunction.name}}
+                section = section.replace(/\{\{technologyfunction\.name\}\}/g, escapeMD(techFunc.name));
+
+                // Replace {{technologyfunction.documentation}}
+                var techDoc = techFunc.documentation || "";
+                section = section.replace(/\{\{technologyfunction\.documentation\}\}/g, escapeMD(techDoc));
+
+                // Replace property placeholders like {{technologyfunction.properties.XXX}}
+                section = section.replace(/\{\{technologyfunction\.properties\.([^}]+)\}\}/g, function(fullMatch, propName) {
+                    return getPropertyOrNA(techFunc.element, propName);
+                });
+
+                // Replace {{technologyservices.name}} with related services
+                var servicesList = "";
+                if (techFunc.services && techFunc.services.length > 0) {
+                    for (var j = 0; j < techFunc.services.length; j++) {
+                        servicesList += "- " + escapeMD(techFunc.services[j].name) + "\n";
+                    }
+                } else {
+                    servicesList = "Aucun service lié\n";
+                }
+                section = section.replace(/\{\{technologyservices\.name\}\}/g, servicesList.trim());
+
+                // Also support singular form
+                section = section.replace(/\{\{technologyservice\.name\}\}/g, servicesList.trim());
+
+                generatedSections += section + "\n";
+            }
+        } else {
+            generatedSections = "Aucune fonction technique définie\n\n";
+        }
+
+        // Replace the original section template with all generated sections
+        result = result.replace(techFuncPattern, generatedSections);
+    }
+
+    return result;
+}

@@ -1,0 +1,334 @@
+/*
+ * Template Engine Library
+ *
+ * Provides template processing functionality with support for:
+ * - Simple variables: {{view.name}}
+ * - Loops: {{#each items}}...{{/each}}
+ * - Nested contexts: {{item.name}} inside loops
+ *
+ * Version 2.0 - Rewritten with loop support
+ */
+
+// =====================================================
+// File Reading Functions
+// =====================================================
+
+/**
+ * Read a template file from disk
+ * @param {string} filePath - Absolute path to the template file
+ * @returns {string} The file content as a string
+ */
+function readTemplateFile(filePath) {
+    var result = '';
+    var imports = new JavaImporter(java.net, java.lang, java.io);
+
+    with (imports) {
+        var urlObj = null;
+
+        try {
+            urlObj = new URL(filePath);
+        } catch (e) {
+            // If the URL cannot be built, assume it is a file path
+            urlObj = new URL(new File(filePath).toURI().toURL());
+        }
+
+        var reader = new BufferedReader(new InputStreamReader(urlObj.openStream(), 'UTF-8'));
+
+        var line = reader.readLine();
+        while (line != null) {
+            result += line + '\n';
+            line = reader.readLine();
+        }
+
+        reader.close();
+    }
+
+    return result;
+}
+
+// =====================================================
+// Text Processing Functions
+// =====================================================
+
+/**
+ * Escape markdown special characters in text
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeMD(text) {
+    if (text == null || text === "") {
+        return "";
+    }
+    // Escape pipe characters for markdown tables
+    return text.toString().replace(/\|/g, "\\|");
+}
+
+/**
+ * Convert newlines to HTML breaks for table cells
+ * @param {string} text - Text to convert
+ * @returns {string} Text with newlines converted to <br>
+ */
+function newlinesToBr(text) {
+    if (text == null || text === "") {
+        return "";
+    }
+    return text.toString().replace(/\r\n/g, "<br>").replace(/\n/g, "<br>");
+}
+
+// =====================================================
+// Template Processing Functions
+// =====================================================
+
+/**
+ * Process a template and replace all variables and loops
+ * @param {string} template - The template content
+ * @param {object} data - Object containing the data to inject into template
+ * @returns {string} Processed template
+ */
+function processTemplate(template, data) {
+    console.log("Processing template...");
+
+    var result = template;
+
+    // Process loops first (they can contain simple variables)
+    result = processLoops(result, data, null);
+
+    // Then process simple variables
+    result = processSimpleVariables(result, data);
+
+    // Clean up empty lines in tables
+    // 1. Remove empty lines after table headers (|-|-|)
+    result = result.replace(/(\|-\|(-\|)+)\n\n+/g, "$1\n");
+
+    // 2. Remove ALL empty lines between table rows (iterative to handle multiple empty lines)
+    // Keep replacing until no more empty lines are found
+    var previousResult = "";
+    while (previousResult !== result) {
+        previousResult = result;
+        result = result.replace(/(\|[^\n]+\|)\n\n+(\|[^\n]+\|)/g, "$1\n$2");
+    }
+
+    // Check for unknown variables and warn
+    warnUnknownVariables(result);
+
+    return result;
+}
+
+// =====================================================
+// Loop Processing
+// =====================================================
+
+/**
+ * Process all {{#each}}...{{/each}} loops in the template
+ * Uses named closing tags: {{#each groups}}...{{/each groups}}
+ * @param {string} template - Template content
+ * @param {object} data - Data object
+ * @param {object} parentContext - Context from parent loop (for nested loops)
+ * @returns {string} Template with loops expanded
+ */
+function processLoops(template, data, parentContext) {
+    var result = template;
+
+    // Find loop with named closing tag: {{#each XXX}}...{{/each XXX}}
+    // The \1 backreference ensures the closing tag matches the opening tag
+    var loopPattern = /\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\s+\1\}\}/;
+    var match = result.match(loopPattern);
+
+    if (!match) {
+        return result; // No loops found
+    }
+
+    var collectionName = match[1]; // e.g., "groups" or "capabilities"
+    var loopContent = match[2];    // Content inside the loop (may contain nested loops)
+    var fullMatch = match[0];      // The entire {{#each}}...{{/each}} block
+
+    // Determine the singular context name (e.g., "groups" -> "group")
+    var contextName = getSingularName(collectionName);
+
+    // Get the collection from data or parent context
+    var collection = null;
+
+    // First try to get from parent context (for nested properties like group.capabilities)
+    if (parentContext && parentContext[collectionName]) {
+        collection = parentContext[collectionName];
+    } else if (data[collectionName]) {
+        // Otherwise get from global data
+        collection = data[collectionName];
+    }
+
+    var expanded = "";
+
+    if (collection && collection.length > 0) {
+        // Expand the loop for each item
+        for (var i = 0; i < collection.length; i++) {
+            var item = collection[i];
+            var itemContent = loopContent;
+
+            // Replace variables in this iteration
+            itemContent = replaceContextVariables(itemContent, contextName, item, data);
+
+            // Process any nested loops with this item as parent context (RECURSIVE)
+            itemContent = processLoops(itemContent, data, item);
+
+            expanded += itemContent;
+        }
+    }
+
+    // Replace this loop with the expanded content
+    result = result.replace(fullMatch, expanded);
+
+    // Continue processing any remaining loops at this level (ITERATIVE)
+    result = processLoops(result, data, parentContext);
+
+    return result;
+}
+
+/**
+ * Get singular form of a collection name
+ * @param {string} plural - Plural name (e.g., "groups")
+ * @returns {string} Singular name (e.g., "group")
+ */
+function getSingularName(plural) {
+    // Simple pluralization rules
+    if (plural.endsWith("ies")) {
+        return plural.substring(0, plural.length - 3) + "y";
+    } else if (plural.endsWith("s")) {
+        return plural.substring(0, plural.length - 1);
+    }
+    return plural;
+}
+
+/**
+ * Replace variables in a loop iteration context
+ * @param {string} content - Content to process
+ * @param {string} contextName - Name of the context (e.g., "group")
+ * @param {object} contextData - Data for this context
+ * @param {object} globalData - Global data object
+ * @returns {string} Content with variables replaced
+ */
+function replaceContextVariables(content, contextName, contextData, globalData) {
+    var result = content;
+
+    // Pattern: {{contextName.propertyName}}
+    var contextPattern = new RegExp("\\{\\{" + contextName + "\\.([^}]+)\\}\\}", "g");
+
+    result = result.replace(contextPattern, function(match, propertyPath) {
+        var value = getNestedProperty(contextData, propertyPath);
+
+        if (value === null || value === undefined) {
+            return "";
+        }
+
+        // For documentation in tables, convert newlines to <br>
+        if (propertyPath === "documentation") {
+            return escapeMD(newlinesToBr(value));
+        }
+
+        return escapeMD(value);
+    });
+
+    return result;
+}
+
+/**
+ * Get a nested property from an object using dot notation
+ * @param {object} obj - Object to get property from
+ * @param {string} path - Property path (e.g., "name" or "properties.MyProp")
+ * @returns {*} Property value or null if not found
+ */
+function getNestedProperty(obj, path) {
+    var parts = path.split(".");
+    var current = obj;
+
+    for (var i = 0; i < parts.length; i++) {
+        if (current === null || current === undefined) {
+            return null;
+        }
+
+        var part = parts[i];
+
+        // Special handling for "properties" object
+        if (part === "properties" && current.properties) {
+            current = current.properties;
+        } else if (current[part] !== undefined) {
+            current = current[part];
+        } else {
+            return null;
+        }
+    }
+
+    return current;
+}
+
+// =====================================================
+// Simple Variable Processing
+// =====================================================
+
+/**
+ * Process simple variables like {{view.name}}
+ * @param {string} template - Template content
+ * @param {object} data - Data object
+ * @returns {string} Template with simple variables replaced
+ */
+function processSimpleVariables(template, data) {
+    var result = template;
+
+    // Replace {{view.name}}
+    if (data.view) {
+        result = result.replace(/\{\{view\.name\}\}/g, escapeMD(data.view.name));
+        result = result.replace(/\{\{view\.documentation\}\}/g, escapeMD(data.view.documentation));
+    }
+
+    // Replace {{view.image.png}} with image markdown
+    if (data.imageFilename) {
+        result = result.replace(/\{\{view\.image\.png\}\}/g, "![" + data.view.name + "](" + data.imageFilename + ")");
+        result = result.replace(/\{\{view\.image\.svg\}\}/g, "![" + data.view.name + "](" + data.imageFilename + ")");
+    }
+
+    return result;
+}
+
+// =====================================================
+// Validation and Warnings
+// =====================================================
+
+/**
+ * Check for remaining {{variables}} in the result and warn about them
+ * @param {string} result - Processed template
+ */
+function warnUnknownVariables(result) {
+    var unknownPattern = /\{\{([^}]+)\}\}/g;
+    var match;
+    var unknownVars = [];
+
+    while ((match = unknownPattern.exec(result)) !== null) {
+        var varName = match[1];
+
+        // Skip #each and /each markers
+        if (varName.startsWith("#") || varName.startsWith("/")) {
+            continue;
+        }
+
+        // Avoid duplicates
+        var alreadyWarned = false;
+        for (var i = 0; i < unknownVars.length; i++) {
+            if (unknownVars[i] === varName) {
+                alreadyWarned = true;
+                break;
+            }
+        }
+        if (!alreadyWarned) {
+            unknownVars.push(varName);
+        }
+    }
+
+    // Display warnings for unknown variables
+    if (unknownVars.length > 0) {
+        console.log("");
+        console.log("[WARNING] Variables inconnues dans le template:");
+        for (var i = 0; i < unknownVars.length; i++) {
+            console.log("  - {{" + unknownVars[i] + "}}");
+        }
+        console.log("Ces variables n'ont pas été remplacées.");
+    }
+}

@@ -1,0 +1,319 @@
+/*
+ * Extract View Documentation
+ *
+ * Generates a Markdown documentation file from a selected ArchiMate view
+ * based on the template extract_view_template.md
+ *
+ * Requires jArchi - https://www.archimatetool.com/blog/2018/07/02/jarchi/
+ *
+ * Generates:
+ * - A Markdown file named after the view
+ * - A PNG image of the view
+ *
+ * Version 1.0 - Initial version
+ * Version 2.0 - Refactored to use templateEngine library
+ */
+
+// Load template engine library
+load(__DIR__ + "..\\library\\templateEngine.ajs");
+
+console.clear();
+console.show();
+
+// =====================================================
+// Helper Functions
+// =====================================================
+
+/**
+ * Sanitize a filename by removing/replacing invalid characters
+ */
+function sanitizeFilename(name) {
+    return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '-');
+}
+
+// =====================================================
+// Helper Functions for Template Discovery
+// =====================================================
+
+/**
+ * Discover all available templates in the script directory
+ * @returns {Array} Array of template file names
+ */
+function discoverTemplates() {
+    var templates = [];
+    var imports = new JavaImporter(java.io);
+
+    with (imports) {
+        var dir = new File(__DIR__);
+        var files = dir.listFiles();
+
+        if (files != null) {
+            for (var i = 0; i < files.length; i++) {
+                var fileName = files[i].getName();
+                // Match pattern: extract_view_*_template.md
+                if (fileName.startsWith("extract_view_") && fileName.endsWith("_template.md")) {
+                    templates.push(fileName);
+                }
+            }
+        }
+    }
+
+    return templates;
+}
+
+/**
+ * Extract a readable name from template filename
+ * @param {string} filename - Template filename
+ * @returns {string} Human-readable template name
+ */
+function getTemplateName(filename) {
+    // Extract name between "extract_view_" and "_template.md"
+    var name = filename.replace("extract_view_", "").replace("_template.md", "");
+    return name;
+}
+
+// =====================================================
+// Main Script
+// =====================================================
+
+console.log("=== Extract View Documentation ===");
+
+// Validate selection
+var theView = $(selection).filter("archimate-diagram-model").first();
+if (!theView) {
+    window.alert("Please select an ArchiMate view first.");
+    console.error("ERROR: No view selected");
+    exit();
+}
+
+console.log("Processing view: " + theView.name);
+
+// =====================================================
+// Discover and Select Template
+// =====================================================
+
+console.log("Discovering available templates...");
+var templateFiles = discoverTemplates();
+
+if (templateFiles.length === 0) {
+    window.alert("No templates found!\n\nPlease ensure you have at least one template file named:\nextract_view_*_template.md");
+    console.error("ERROR: No templates found in directory");
+    exit();
+}
+
+console.log("Found " + templateFiles.length + " template(s):");
+for (var i = 0; i < templateFiles.length; i++) {
+    console.log("  - " + templateFiles[i]);
+}
+
+// Create readable names for selection dialog
+var templateNames = [];
+for (var i = 0; i < templateFiles.length; i++) {
+    templateNames.push(getTemplateName(templateFiles[i]));
+}
+
+// Present selection dialog to user
+var selectedName = window.promptSelection("Sélectionnez le template à utiliser:", templateNames);
+
+console.log("DEBUG: selectedName = " + selectedName);
+console.log("DEBUG: selectedName type = " + typeof selectedName);
+
+if (selectedName === null || selectedName === undefined || selectedName === "") {
+    console.log("Template selection cancelled by user");
+    exit();
+}
+
+// Convert selected name back to filename
+var selectedTemplateFile = null;
+for (var i = 0; i < templateFiles.length; i++) {
+    if (getTemplateName(templateFiles[i]) === selectedName.toString()) {
+        selectedTemplateFile = templateFiles[i];
+        break;
+    }
+}
+
+if (selectedTemplateFile === null) {
+    console.error("ERROR: Could not find template file for: " + selectedName);
+    exit();
+}
+
+console.log("Selected template: " + selectedTemplateFile);
+
+// =====================================================
+// Load Template
+// =====================================================
+
+var templatePath = __DIR__ + selectedTemplateFile;
+console.log("Loading template from: " + templatePath);
+
+var template = readTemplateFile(templatePath);
+
+// =====================================================
+// Extract Elements from View
+// =====================================================
+
+var capability = null;           // First capability (for backward compatibility)
+var allCapabilities = [];        // All capabilities (for table format) - with group info
+var goals = [];
+var technologyFunctionsData = [];
+var groups = [];                 // Diagram groups
+
+// Find all elements in the view
+$(theView).find().each(function(e) {
+    var elementType = e.type;
+
+    if (elementType === "capability") {
+        // Store first capability for backward compatibility
+        if (capability == null) {
+            capability = e;
+        }
+
+        // Find the parent group for this capability
+        var parentGroup = $(e).parent("diagram-model-group").first();
+        var groupName = parentGroup ? parentGroup.name : "Sans groupe";
+
+        // Store capability with group information
+        allCapabilities.push({
+            element: e,
+            name: e.name,
+            documentation: e.documentation,
+            groupName: groupName,
+            groupElement: parentGroup
+        });
+    } else if (elementType === "goal") {
+        goals.push(e);
+    } else if (elementType === "technology-function") {
+        // For each technology function, also collect its related services
+        var services = [];
+
+        $(e).outRels().each(function(rel) {
+            var target = rel.target;
+            if (target.type === "technology-service") {
+                // Avoid duplicates
+                var alreadyAdded = false;
+                for (var k = 0; k < services.length; k++) {
+                    if (services[k].id === target.id) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+                if (!alreadyAdded) {
+                    services.push(target);
+                }
+            }
+        });
+
+        technologyFunctionsData.push({
+            element: e,
+            name: e.name,
+            documentation: e.documentation,
+            services: services
+        });
+    }
+});
+
+// Find diagram groups (diagram-model-group)
+$(theView).find("diagram-model-group").each(function(g) {
+    groups.push(g);
+});
+
+// Group capabilities by their parent group
+var capabilitiesByGroup = [];
+var groupNames = [];
+
+for (var i = 0; i < allCapabilities.length; i++) {
+    var cap = allCapabilities[i];
+    var groupName = cap.groupName;
+
+    // Find if this group already exists in our array
+    var groupIndex = -1;
+    for (var j = 0; j < groupNames.length; j++) {
+        if (groupNames[j] === groupName) {
+            groupIndex = j;
+            break;
+        }
+    }
+
+    // If group doesn't exist, create it
+    if (groupIndex === -1) {
+        groupNames.push(groupName);
+        capabilitiesByGroup.push({
+            groupName: groupName,
+            groupElement: cap.groupElement,
+            capabilities: [cap]
+        });
+    } else {
+        // Add capability to existing group
+        capabilitiesByGroup[groupIndex].capabilities.push(cap);
+    }
+}
+
+console.log("Found elements:");
+console.log("  - Capabilities: " + allCapabilities.length + " (first: " + (capability ? capability.name : "none") + ")");
+console.log("  - Goals: " + goals.length);
+console.log("  - Technology Functions: " + technologyFunctionsData.length);
+console.log("  - Groups: " + groups.length);
+console.log("  - Capabilities by group: " + capabilitiesByGroup.length + " groups");
+
+// =====================================================
+// Export View as PNG
+// =====================================================
+
+var viewFilename = sanitizeFilename(theView.name);
+var pngFilename = viewFilename + ".png";
+var mdFilename = viewFilename + ".md";
+var scriptDir = __DIR__;
+
+console.log("Exporting view image to: " + pngFilename);
+
+// Render view as PNG (base64 encoded)
+var pngOptions = {
+    scale: 2,
+    margin: 10
+};
+var pngBytes = $.model.renderViewAsBase64(theView, "PNG", pngOptions);
+
+// Save PNG file
+var pngPath = scriptDir + pngFilename;
+$.fs.writeFile(pngPath, pngBytes, "BASE64");
+
+console.log("PNG exported successfully");
+
+// =====================================================
+// Generate Markdown Content Using Template
+// =====================================================
+
+console.log("Processing template...");
+
+// Prepare data object for template engine
+var data = {
+    view: theView,                              // Full view object
+    viewName: theView.name,                     // View name (for backward compat)
+    capability: capability,                     // First capability (for backward compat)
+    capabilities: allCapabilities,              // All capabilities (for tables)
+    capabilitiesByGroup: capabilitiesByGroup,   // Capabilities grouped by parent group
+    goals: goals,                               // Goals list
+    technologyFunctions: technologyFunctionsData, // Technology functions with services
+    groups: groups,                             // Diagram groups
+    imageFilename: pngFilename                  // PNG filename
+};
+
+// Process template with data
+var markdown = processTemplate(template, data);
+
+// =====================================================
+// Save Markdown File
+// =====================================================
+
+var mdPath = scriptDir + mdFilename;
+$.fs.writeFile(mdPath, markdown);
+
+console.log("Markdown file saved to: " + mdPath);
+console.log("");
+console.log("=== Documentation generated successfully ===");
+console.log("Files created:");
+console.log("  - " + mdFilename);
+console.log("  - " + pngFilename);
+
+// Show success message
+window.alert("Documentation generated successfully!\n\nFiles created:\n- " + mdFilename + "\n- " + pngFilename);

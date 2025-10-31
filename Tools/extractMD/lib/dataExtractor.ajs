@@ -1,0 +1,320 @@
+/*
+ * Data Extractor Library
+ *
+ * Extracts all relevant data from an ArchiMate view including:
+ * - Visual structure (diagram groups, parent-child visual relationships)
+ * - Semantic structure (ArchiMate elements and their relationships)
+ *
+ * Version 2.0 - Complete rewrite with dual structure
+ */
+
+// =====================================================
+// Main Extraction Function
+// =====================================================
+
+/**
+ * Extract all data from a view for template processing
+ * @param {object} view - The ArchiMate view to extract data from
+ * @returns {object} Data object containing visual and semantic structures
+ */
+function extractViewData(view) {
+    console.log("Extracting data from view: " + view.name);
+
+    // Extract visual structure (diagram hierarchy)
+    var visualStructure = extractVisualStructure(view);
+
+    // Extract semantic structure (ArchiMate elements and relationships)
+    var semanticStructure = extractSemanticStructure(view);
+
+    // Build convenient collections for templates
+    var data = {
+        view: extractViewInfo(view),
+
+        // Visual groupings
+        groups: buildGroupsWithChildren(visualStructure),
+
+        // Semantic elements (deduplicated)
+        capabilities: semanticStructure.capabilities,
+        goals: semanticStructure.goals,
+        technologyFunctions: semanticStructure.technologyFunctions,
+
+        // Relationships
+        relationships: semanticStructure.relationships
+    };
+
+    // Log extraction summary
+    console.log("Extraction complete:");
+    console.log("  - Groups: " + data.groups.length);
+    console.log("  - Capabilities: " + data.capabilities.length);
+    console.log("  - Goals: " + data.goals.length);
+    console.log("  - Technology Functions: " + data.technologyFunctions.length);
+    console.log("  - Relationships: " + data.relationships.length);
+
+    return data;
+}
+
+// =====================================================
+// View Information Extraction
+// =====================================================
+
+/**
+ * Extract view-level information
+ * @param {object} view - The ArchiMate view
+ * @returns {object} View information
+ */
+function extractViewInfo(view) {
+    return {
+        name: view.name || "",
+        documentation: view.documentation || "",
+        type: view.type || "",
+        imagePath: null  // Will be set by main script
+    };
+}
+
+// =====================================================
+// Visual Structure Extraction
+// =====================================================
+
+/**
+ * Extract the visual structure of the diagram (groups, containment)
+ * @param {object} view - The ArchiMate view
+ * @returns {object} Visual structure with parent-child relationships
+ */
+function extractVisualStructure(view) {
+    var structure = {
+        objects: {},     // Map of visual objects by ID
+        roots: []        // IDs of root-level objects (no parent)
+    };
+
+    // Pass 1: Collect all visual objects
+    $(view).find().each(function(visualObj) {
+        var objData = {
+            id: visualObj.id,
+            type: visualObj.type,
+            name: visualObj.name || "",
+            documentation: visualObj.documentation || "",
+            parentId: null,
+            childrenIds: [],
+            conceptId: visualObj.id,  // Concept ID (same as visual ID for model elements)
+            isGroup: visualObj.type === "diagram-model-group",
+            isNote: visualObj.type === "diagram-model-note",
+            isRelationship: visualObj.type && visualObj.type.indexOf("relationship") >= 0
+        };
+
+        structure.objects[visualObj.id] = objData;
+    });
+
+    // Pass 2: Build parent-child relationships
+    $(view).find().each(function(visualObj) {
+        var obj = structure.objects[visualObj.id];
+
+        if (!obj) {
+            return;  // Object not found, skip
+        }
+
+        // Find parent group
+        var parentGroup = $(visualObj).parent("diagram-model-group").first();
+
+        if (parentGroup) {
+            obj.parentId = parentGroup.id;
+
+            // Add this object to parent's children
+            if (structure.objects[parentGroup.id]) {
+                structure.objects[parentGroup.id].childrenIds.push(visualObj.id);
+            }
+        } else {
+            // No parent, this is a root object
+            structure.roots.push(visualObj.id);
+        }
+    });
+
+    return structure;
+}
+
+// =====================================================
+// Semantic Structure Extraction
+// =====================================================
+
+/**
+ * Extract the semantic structure (ArchiMate elements and relationships)
+ * Elements are deduplicated by concept ID
+ * @param {object} view - The ArchiMate view
+ * @returns {object} Semantic structure with elements and relationships
+ */
+function extractSemanticStructure(view) {
+    var structure = {
+        elements: {},           // Map of elements by concept ID (deduplicated)
+        relationships: [],      // Array of all relationships
+        capabilities: [],       // Convenience array
+        goals: [],              // Convenience array
+        technologyFunctions: []  // Convenience array
+    };
+
+    var seenElementIds = {};  // Track which concept IDs we've already processed
+
+    // Pass 1: Extract elements (deduplicated by concept ID)
+    $(view).find().each(function(visualObj) {
+        // Skip groups, notes, and relationships
+        if (visualObj.type === "diagram-model-group" ||
+            visualObj.type === "diagram-model-note" ||
+            (visualObj.type && visualObj.type.indexOf("relationship") >= 0)) {
+            return;
+        }
+
+        var elementId = visualObj.id;
+
+        // Only process each concept once (deduplication)
+        if (seenElementIds[elementId]) {
+            return;
+        }
+        seenElementIds[elementId] = true;
+
+        // Extract element data
+        var elementData = {
+            id: elementId,
+            type: visualObj.type,
+            name: visualObj.name || "",
+            documentation: visualObj.documentation || "",
+            properties: extractProperties(visualObj),
+            incomingRelations: [],
+            outgoingRelations: []
+        };
+
+        structure.elements[elementId] = elementData;
+
+        // Add to type-specific arrays
+        if (visualObj.type === "capability") {
+            structure.capabilities.push(elementData);
+        } else if (visualObj.type === "goal") {
+            structure.goals.push(elementData);
+        } else if (visualObj.type === "technology-function") {
+            structure.technologyFunctions.push(elementData);
+        }
+    });
+
+    // Pass 2: Extract relationships
+    $(view).find("relationship").each(function(rel) {
+        var source = rel.source;
+        var target = rel.target;
+
+        if (!source || !target) {
+            return;  // Invalid relationship
+        }
+
+        var relationshipData = {
+            id: rel.id,
+            type: rel.type,
+            name: rel.name || "",
+            documentation: rel.documentation || "",
+            sourceId: source.id,
+            targetId: target.id,
+            source: structure.elements[source.id],
+            target: structure.elements[target.id]
+        };
+
+        structure.relationships.push(relationshipData);
+
+        // Add to source's outgoing relations
+        if (structure.elements[source.id]) {
+            structure.elements[source.id].outgoingRelations.push(relationshipData);
+        }
+
+        // Add to target's incoming relations
+        if (structure.elements[target.id]) {
+            structure.elements[target.id].incomingRelations.push(relationshipData);
+        }
+    });
+
+    // Pass 3: Enrich technology functions with their services
+    for (var i = 0; i < structure.technologyFunctions.length; i++) {
+        var techFunc = structure.technologyFunctions[i];
+        techFunc.services = [];
+
+        // Find all technology-service elements connected to this function
+        for (var j = 0; j < techFunc.outgoingRelations.length; j++) {
+            var rel = techFunc.outgoingRelations[j];
+            if (rel.target && rel.target.type === "technology-service") {
+                techFunc.services.push(rel.target);
+            }
+        }
+    }
+
+    return structure;
+}
+
+// =====================================================
+// Build Collections for Templates
+// =====================================================
+
+/**
+ * Build groups with their children for template consumption
+ * @param {object} visualStructure - Visual structure from extractVisualStructure
+ * @returns {array} Array of group objects with their children
+ */
+function buildGroupsWithChildren(visualStructure) {
+    var groups = [];
+
+    // Find all diagram-model-group objects
+    for (var id in visualStructure.objects) {
+        var obj = visualStructure.objects[id];
+
+        if (obj.isGroup) {
+            // Build children array with full object data
+            var children = [];
+            for (var i = 0; i < obj.childrenIds.length; i++) {
+                var childId = obj.childrenIds[i];
+                var child = visualStructure.objects[childId];
+
+                if (child && !child.isGroup && !child.isNote && !child.isRelationship) {
+                    children.push(child);
+                }
+            }
+
+            // Filter capabilities
+            var capabilities = children.filter(function(c) { return c.type === "capability"; });
+
+            // Only include groups that have children
+            if (children.length > 0) {
+                groups.push({
+                    id: obj.id,
+                    name: obj.name,
+                    documentation: obj.documentation,
+                    children: children,
+                    capabilities: capabilities
+                });
+            }
+        }
+    }
+
+    return groups;
+}
+
+// =====================================================
+// Property Extraction
+// =====================================================
+
+/**
+ * Extract all properties from an element
+ * @param {object} element - ArchiMate element
+ * @returns {object} Key-value map of properties
+ */
+function extractProperties(element) {
+    var properties = {};
+
+    if (element && element.prop) {
+        // Get all property names
+        var propNames = element.prop();
+
+        if (propNames && propNames.length) {
+            for (var i = 0; i < propNames.length; i++) {
+                var propName = propNames[i];
+                var propValue = element.prop(propName);
+                if (propValue !== null && propValue !== undefined) {
+                    properties[propName] = propValue;
+                }
+            }
+        }
+    }
+
+    return properties;
+}

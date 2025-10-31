@@ -1,0 +1,244 @@
+/*
+ * Extract Markdown Documentation
+ *
+ * Generic template-based documentation generator for ArchiMate views
+ *
+ * Generates:
+ * - A Markdown file based on the selected template
+ * - A PNG image of the view
+ *
+ * Version 2.0 - Rewritten with generic template engine
+ */
+
+// Load libraries
+load(__DIR__ + "lib\\templateEngine.ajs");
+load(__DIR__ + "lib\\dataExtractor.ajs");
+
+console.clear();
+console.show();
+
+// =====================================================
+// Helper Functions
+// =====================================================
+
+/**
+ * Sanitize a filename by removing/replacing invalid characters
+ */
+function sanitizeFilename(name) {
+    return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '-');
+}
+
+/**
+ * Discover all available templates in the templates directory
+ * @returns {Array} Array of template file objects {filename, displayName}
+ */
+function discoverTemplates() {
+    var templates = [];
+    var imports = new JavaImporter(java.io);
+
+    with (imports) {
+        var templatesDir = new File(__DIR__ + "templates");
+
+        if (!templatesDir.exists() || !templatesDir.isDirectory()) {
+            console.error("ERROR: Templates directory not found: " + templatesDir.getPath());
+            return templates;
+        }
+
+        var files = templatesDir.listFiles();
+
+        if (files != null) {
+            for (var i = 0; i < files.length; i++) {
+                var file = files[i];
+                var fileName = file.getName();
+
+                // Match pattern: *.md
+                if (fileName.endsWith(".md")) {
+                    var displayName = getTemplateDisplayName(fileName);
+                    templates.push({
+                        filename: fileName,
+                        displayName: displayName
+                    });
+                }
+            }
+        }
+    }
+
+    return templates;
+}
+
+/**
+ * Extract a readable name from template filename
+ * @param {string} filename - Template filename
+ * @returns {string} Human-readable template name
+ */
+function getTemplateDisplayName(filename) {
+    var name = filename.replace(".md", "");
+
+    // Remove common prefixes
+    name = name.replace(/^extract_view_/, "");
+    name = name.replace(/_template$/, "");
+
+    // Replace underscores with spaces and capitalize
+    name = name.replace(/_/g, " ");
+
+    return name;
+}
+
+/**
+ * Export view as PNG image
+ * @param {object} view - The ArchiMate view
+ * @param {string} outputPath - Path where to save the PNG
+ * @returns {string} Filename of the generated image
+ */
+function exportViewImage(view, outputPath) {
+    console.log("Exporting view image...");
+
+    var viewFilename = sanitizeFilename(view.name);
+    var pngFilename = viewFilename + ".png";
+    var pngPath = outputPath + pngFilename;
+
+    // Render view as PNG (base64 encoded)
+    var pngOptions = {
+        scale: 2,
+        margin: 10
+    };
+    var pngBytes = $.model.renderViewAsBase64(view, "PNG", pngOptions);
+
+    // Save PNG file
+    $.fs.writeFile(pngPath, pngBytes, "BASE64");
+
+    console.log("  Image saved: " + pngFilename);
+
+    return pngFilename;
+}
+
+// =====================================================
+// Main Script
+// =====================================================
+
+console.log("=== Extract Markdown Documentation ===");
+console.log("");
+
+// Validate selection
+var theView = $(selection).filter("archimate-diagram-model").first();
+if (!theView) {
+    window.alert("Veuillez d'abord sélectionner une vue ArchiMate.");
+    console.error("ERROR: No view selected");
+    exit();
+}
+
+console.log("Vue sélectionnée: " + theView.name);
+console.log("");
+
+// =====================================================
+// Discover and Select Template
+// =====================================================
+
+console.log("Recherche des templates disponibles...");
+var templates = discoverTemplates();
+
+if (templates.length === 0) {
+    window.alert("Aucun template trouvé!\n\nVeuillez placer au moins un fichier .md dans:\n" + __DIR__ + "templates\\");
+    console.error("ERROR: No templates found");
+    exit();
+}
+
+console.log("Templates trouvés: " + templates.length);
+for (var i = 0; i < templates.length; i++) {
+    console.log("  - " + templates[i].displayName + " (" + templates[i].filename + ")");
+}
+console.log("");
+
+// Present selection dialog to user
+var templateNames = [];
+for (var i = 0; i < templates.length; i++) {
+    templateNames.push(templates[i].displayName);
+}
+
+var selectedName = window.promptSelection("Sélectionnez le template à utiliser:", templateNames);
+
+if (selectedName === null || selectedName === undefined || selectedName === "") {
+    console.log("Template selection cancelled by user");
+    exit();
+}
+
+// Find the selected template
+var selectedTemplate = null;
+for (var i = 0; i < templates.length; i++) {
+    if (templates[i].displayName === selectedName.toString()) {
+        selectedTemplate = templates[i];
+        break;
+    }
+}
+
+if (selectedTemplate === null) {
+    console.error("ERROR: Could not find template: " + selectedName);
+    exit();
+}
+
+console.log("Template sélectionné: " + selectedTemplate.displayName);
+console.log("");
+
+// =====================================================
+// Load Template
+// =====================================================
+
+var templatePath = __DIR__ + "templates\\" + selectedTemplate.filename;
+console.log("Chargement du template: " + templatePath);
+
+var templateContent = readTemplateFile(templatePath);
+
+console.log("  Template chargé: " + templateContent.length + " caractères");
+console.log("");
+
+// =====================================================
+// Extract Data from View
+// =====================================================
+
+var data = extractViewData(theView);
+console.log("");
+
+// =====================================================
+// Export View Image
+// =====================================================
+
+var scriptDir = __DIR__;
+var imageFilename = exportViewImage(theView, scriptDir);
+
+// Add image filename to data
+data.imageFilename = imageFilename;
+
+console.log("");
+
+// =====================================================
+// Process Template
+// =====================================================
+
+var markdown = processTemplate(templateContent, data);
+
+console.log("");
+
+// =====================================================
+// Save Markdown File
+// =====================================================
+
+var viewFilename = sanitizeFilename(theView.name);
+var mdFilename = viewFilename + ".md";
+var mdPath = scriptDir + mdFilename;
+
+$.fs.writeFile(mdPath, markdown);
+
+console.log("Fichier Markdown sauvegardé: " + mdFilename);
+console.log("");
+
+// =====================================================
+// Success
+// =====================================================
+
+console.log("=== Documentation générée avec succès ===");
+console.log("Fichiers créés:");
+console.log("  - " + mdFilename);
+console.log("  - " + imageFilename);
+
+// Show success message
+window.alert("Documentation générée avec succès!\n\nFichiers créés:\n- " + mdFilename + "\n- " + imageFilename);
