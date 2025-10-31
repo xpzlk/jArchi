@@ -2,7 +2,7 @@
 
 {{view.image.png}}
 
-{{#each groups}}
+{{#each groups where name != "Légende"}}
 ## {{group.name}}
 
 |Capacité|Intention|

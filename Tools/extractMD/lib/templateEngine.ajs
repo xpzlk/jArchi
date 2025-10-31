@@ -4,9 +4,10 @@
  * Provides template processing functionality with support for:
  * - Simple variables: {{view.name}}
  * - Loops: {{#each items}}...{{/each}}
+ * - Conditional loops: {{#each items where field="value"}}
  * - Nested contexts: {{item.name}} inside loops
  *
- * Version 2.0 - Rewritten with loop support
+ * Version 3.0 - Added conditional filtering with AND/OR support
  */
 
 // =====================================================
@@ -121,6 +122,7 @@ function processTemplate(template, data) {
 /**
  * Process all {{#each}}...{{/each}} loops in the template
  * Uses named closing tags: {{#each groups}}...{{/each groups}}
+ * Supports WHERE conditions: {{#each groups where type="capability"}}
  * @param {string} template - Template content
  * @param {object} data - Data object
  * @param {object} parentContext - Context from parent loop (for nested loops)
@@ -129,9 +131,9 @@ function processTemplate(template, data) {
 function processLoops(template, data, parentContext) {
     var result = template;
 
-    // Find loop with named closing tag: {{#each XXX}}...{{/each XXX}}
+    // Find loop with optional WHERE clause: {{#each XXX where CONDITION}}...{{/each XXX}}
     // The \1 backreference ensures the closing tag matches the opening tag
-    var loopPattern = /\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\s+\1\}\}/;
+    var loopPattern = /\{\{#each\s+(\w+)(?:\s+where\s+([^}]+))?\}\}([\s\S]*?)\{\{\/each\s+\1\}\}/;
     var match = result.match(loopPattern);
 
     if (!match) {
@@ -139,7 +141,8 @@ function processLoops(template, data, parentContext) {
     }
 
     var collectionName = match[1]; // e.g., "groups" or "capabilities"
-    var loopContent = match[2];    // Content inside the loop (may contain nested loops)
+    var whereClause = match[2];    // e.g., 'type="capability" AND properties.Status="Active"' or null
+    var loopContent = match[3];    // Content inside the loop (may contain nested loops)
     var fullMatch = match[0];      // The entire {{#each}}...{{/each}} block
 
     // Determine the singular context name (e.g., "groups" -> "group")
@@ -159,9 +162,15 @@ function processLoops(template, data, parentContext) {
     var expanded = "";
 
     if (collection && collection.length > 0) {
+        // Apply WHERE filter if present
+        var filteredCollection = collection;
+        if (whereClause) {
+            filteredCollection = filterCollection(collection, whereClause);
+        }
+
         // Expand the loop for each item
-        for (var i = 0; i < collection.length; i++) {
-            var item = collection[i];
+        for (var i = 0; i < filteredCollection.length; i++) {
+            var item = filteredCollection[i];
             var itemContent = loopContent;
 
             // Replace variables in this iteration
@@ -181,6 +190,164 @@ function processLoops(template, data, parentContext) {
     result = processLoops(result, data, parentContext);
 
     return result;
+}
+
+// =====================================================
+// Conditional Filtering
+// =====================================================
+
+/**
+ * Filter a collection based on WHERE clause
+ * Supports: field="value", field!="value", field contains "text", field exists, field not exists
+ * Logical operators: AND, OR (AND has priority)
+ * @param {array} collection - Array of items to filter
+ * @param {string} whereClause - WHERE condition (e.g., 'type="capability" AND properties.Status="Active"')
+ * @returns {array} Filtered collection
+ */
+function filterCollection(collection, whereClause) {
+    var filtered = [];
+
+    // Parse WHERE clause into OR groups (OR has lowest priority)
+    var orGroups = parseOrGroups(whereClause);
+
+    for (var i = 0; i < collection.length; i++) {
+        var item = collection[i];
+
+        // Item passes if ANY OR group is satisfied
+        var passesFilter = false;
+
+        for (var j = 0; j < orGroups.length; j++) {
+            var andConditions = orGroups[j];
+
+            // All AND conditions in this group must be true
+            var allAndTrue = true;
+
+            for (var k = 0; k < andConditions.length; k++) {
+                if (!evaluateCondition(item, andConditions[k])) {
+                    allAndTrue = false;
+                    break;
+                }
+            }
+
+            if (allAndTrue) {
+                passesFilter = true;
+                break; // No need to check other OR groups
+            }
+        }
+
+        if (passesFilter) {
+            filtered.push(item);
+        }
+    }
+
+    return filtered;
+}
+
+/**
+ * Parse WHERE clause into OR groups, each containing AND conditions
+ * Example: "A AND B OR C AND D" -> [[A, B], [C, D]]
+ * @param {string} whereClause - WHERE condition string
+ * @returns {array} Array of OR groups, each group is an array of AND conditions
+ */
+function parseOrGroups(whereClause) {
+    var orGroups = [];
+
+    // Split by OR (case insensitive)
+    var orParts = whereClause.split(/\s+OR\s+/i);
+
+    for (var i = 0; i < orParts.length; i++) {
+        var orPart = orParts[i].trim();
+
+        // Split by AND (case insensitive)
+        var andParts = orPart.split(/\s+AND\s+/i);
+
+        var andConditions = [];
+        for (var j = 0; j < andParts.length; j++) {
+            var condition = andParts[j].trim();
+            if (condition) {
+                andConditions.push(condition);
+            }
+        }
+
+        if (andConditions.length > 0) {
+            orGroups.push(andConditions);
+        }
+    }
+
+    return orGroups;
+}
+
+/**
+ * Evaluate a single condition against an item
+ * @param {object} item - Item to test
+ * @param {string} condition - Condition string (e.g., 'type="capability"' or 'properties.Status exists')
+ * @returns {boolean} True if condition is met
+ */
+function evaluateCondition(item, condition) {
+    // Pattern: field operator value
+    // Operators: =, !=, contains, exists, not exists
+
+    // Check for "not exists"
+    var notExistsMatch = condition.match(/^([\w.]+)\s+not\s+exists$/i);
+    if (notExistsMatch) {
+        var field = notExistsMatch[1];
+        var value = getNestedProperty(item, field);
+        return value === null || value === undefined || value === "";
+    }
+
+    // Check for "exists"
+    var existsMatch = condition.match(/^([\w.]+)\s+exists$/i);
+    if (existsMatch) {
+        var field = existsMatch[1];
+        var value = getNestedProperty(item, field);
+        return value !== null && value !== undefined && value !== "";
+    }
+
+    // Check for "contains"
+    var containsMatch = condition.match(/^([\w.]+)\s+contains\s+"([^"]+)"$/i);
+    if (containsMatch) {
+        var field = containsMatch[1];
+        var searchText = containsMatch[2];
+        var value = getNestedProperty(item, field);
+
+        if (value === null || value === undefined) {
+            return false;
+        }
+
+        return value.toString().indexOf(searchText) >= 0;
+    }
+
+    // Check for != (not equal)
+    var notEqualMatch = condition.match(/^([\w.]+)\s*!=\s*"([^"]+)"$/);
+    if (notEqualMatch) {
+        var field = notEqualMatch[1];
+        var expectedValue = notEqualMatch[2];
+        var actualValue = getNestedProperty(item, field);
+
+        if (actualValue === null || actualValue === undefined) {
+            return true; // null/undefined is not equal to any value
+        }
+
+        return actualValue.toString() !== expectedValue;
+    }
+
+    // Check for = (equal)
+    var equalMatch = condition.match(/^([\w.]+)\s*=\s*"([^"]+)"$/);
+    if (equalMatch) {
+        var field = equalMatch[1];
+        var expectedValue = equalMatch[2];
+        var actualValue = getNestedProperty(item, field);
+
+        if (actualValue === null || actualValue === undefined) {
+            return false;
+        }
+
+        return actualValue.toString() === expectedValue;
+    }
+
+    // Unknown condition format - log warning and return false
+    console.log("[WARNING] Unknown condition format: " + condition);
+    return false;
 }
 
 /**
