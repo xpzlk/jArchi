@@ -135,3 +135,25 @@ The jArchi plugin provides JavaScript objects for manipulating Archi models:
 - Extract reusable logic to [library/](library/)
 - Use [POC/](POC/) for experimental work
 - Store configurations in `config/` subdirectories
+
+## Documentation
+
+### Script Documentation Template
+
+When documenting scripts, use the standardized template located at [docs/templates/SCRIPT_DOC_TEMPLATE.md](docs/templates/SCRIPT_DOC_TEMPLATE.md).
+
+**Documentation structure**:
+- [docs/scripts/tools/](docs/scripts/tools/) - Documentation for general-purpose tools
+- [docs/scripts/libraries/](docs/scripts/libraries/) - Documentation for reusable library functions
+- [docs/scripts/clients/](docs/scripts/clients/) - Documentation for client-specific scripts
+
+**Template sections**:
+- Overview (category, description)
+- Prerequisites (selection, dependencies, configuration)
+- Usage (execution steps, user interactions)
+- Execution Flow (Mermaid diagram)
+- Configuration (structure and parameters)
+- Output (modifications, console, files)
+- Limitations
+- Examples
+- References (jArchi API, related scripts)
