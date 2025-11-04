@@ -12,8 +12,10 @@
 // Mark this as a caller script (prevents auto-execution of the loaded script)
 var __CALLER_SCRIPT__ = true;
 
+console.log(__DIR__);
+
 // Load generic extractMD engine
-load(__DIR__ + "..\\..\\Tools\\extractMD\\extractMD.ajs");
+load(__DIR__ + "..\\..\\..\\Tools\\extractMD\\extractMD.ajs");
 
 // Identify SITEL templates directory
 var templatesDir = __DIR__ + "templates\\";
