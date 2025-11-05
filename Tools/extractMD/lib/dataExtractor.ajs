@@ -279,13 +279,9 @@ function buildGroupsWithChildren(visualStructure) {
             var capabilities = children.filter(function(c) { return c.type === "capability"; });
             var valueStreams = children.filter(function(c) { return c.type === "value-stream"; });
 
-            // DEBUG: Log group info
-            console.log("Group: " + obj.name + " - children: " + children.length + ", capabilities: " + capabilities.length + ", valueStreams: " + valueStreams.length);
-
             // If there are NO value streams in this group, all capabilities are "orphans"
             // (displayed directly without value stream header)
             var orphanCapabilities = valueStreams.length === 0 ? capabilities : [];
-            console.log("  orphanCapabilities: " + orphanCapabilities.length);
 
             // Only include groups that have children
             if (children.length > 0) {

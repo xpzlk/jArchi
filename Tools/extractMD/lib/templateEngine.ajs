@@ -180,9 +180,6 @@ function evaluateIfCondition(condition, data, parentContext) {
         var threshold = parseInt(lengthGreaterMatch[2], 10);
         var value = getPropertyFromContext(propertyPath, data, parentContext);
 
-        // DEBUG
-        console.log("DEBUG {{#if}}: condition=" + condition + ", value=" + (value ? value.length : "null") + ", threshold=" + threshold);
-
         if (value && value.length !== undefined) {
             return value.length > threshold;
         }
