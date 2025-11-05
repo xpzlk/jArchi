@@ -37,6 +37,7 @@ function extractViewData(view) {
         capabilities: semanticStructure.capabilities,
         goals: semanticStructure.goals,
         technologyFunctions: semanticStructure.technologyFunctions,
+        valueStreams: semanticStructure.valueStreams,
 
         // Relationships
         relationships: semanticStructure.relationships
@@ -48,6 +49,7 @@ function extractViewData(view) {
     console.log("  - Capabilities: " + data.capabilities.length);
     console.log("  - Goals: " + data.goals.length);
     console.log("  - Technology Functions: " + data.technologyFunctions.length);
+    console.log("  - Value Streams: " + data.valueStreams.length);
     console.log("  - Relationships: " + data.relationships.length);
 
     return data;
@@ -147,7 +149,8 @@ function extractSemanticStructure(view) {
         relationships: [],      // Array of all relationships
         capabilities: [],       // Convenience array
         goals: [],              // Convenience array
-        technologyFunctions: []  // Convenience array
+        technologyFunctions: [], // Convenience array
+        valueStreams: []        // Convenience array
     };
 
     var seenElementIds = {};  // Track which concept IDs we've already processed
@@ -189,6 +192,8 @@ function extractSemanticStructure(view) {
             structure.goals.push(elementData);
         } else if (visualObj.type === "technology-function") {
             structure.technologyFunctions.push(elementData);
+        } else if (visualObj.type === "value-stream") {
+            structure.valueStreams.push(elementData);
         }
     });
 
@@ -270,8 +275,17 @@ function buildGroupsWithChildren(visualStructure) {
                 }
             }
 
-            // Filter capabilities
+            // Filter by element type
             var capabilities = children.filter(function(c) { return c.type === "capability"; });
+            var valueStreams = children.filter(function(c) { return c.type === "value-stream"; });
+
+            // DEBUG: Log group info
+            console.log("Group: " + obj.name + " - children: " + children.length + ", capabilities: " + capabilities.length + ", valueStreams: " + valueStreams.length);
+
+            // If there are NO value streams in this group, all capabilities are "orphans"
+            // (displayed directly without value stream header)
+            var orphanCapabilities = valueStreams.length === 0 ? capabilities : [];
+            console.log("  orphanCapabilities: " + orphanCapabilities.length);
 
             // Only include groups that have children
             if (children.length > 0) {
@@ -280,7 +294,9 @@ function buildGroupsWithChildren(visualStructure) {
                     name: obj.name,
                     documentation: obj.documentation,
                     children: children,
-                    capabilities: capabilities
+                    capabilities: capabilities,
+                    valueStreams: valueStreams,
+                    orphanCapabilities: orphanCapabilities
                 });
             }
         }

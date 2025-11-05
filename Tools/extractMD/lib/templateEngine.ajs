@@ -91,8 +91,11 @@ function processTemplate(template, data) {
 
     var result = template;
 
-    // Process loops first (they can contain simple variables)
+    // Process loops first (conditionals inside loops will be processed during loop expansion)
     result = processLoops(result, data, null);
+
+    // Process any remaining top-level conditionals (not inside loops)
+    result = processConditionals(result, data, null);
 
     // Then process simple variables
     result = processSimpleVariables(result, data);
@@ -113,6 +116,155 @@ function processTemplate(template, data) {
     warnUnknownVariables(result);
 
     return result;
+}
+
+// =====================================================
+// Conditional Processing
+// =====================================================
+
+/**
+ * Process all {{#if}}...{{/if}} conditionals in the template
+ * Supports: {{#if property.length > 0}}, {{#if property exists}}, {{#if property}}
+ * @param {string} template - Template content
+ * @param {object} data - Data object
+ * @param {object} parentContext - Context from parent loop (for nested conditionals)
+ * @returns {string} Template with conditionals processed
+ */
+function processConditionals(template, data, parentContext) {
+    var result = template;
+
+    // Pattern: {{#if CONDITION}}...{{/if}}
+    var conditionalPattern = /\{\{#if\s+([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/;
+    var match = result.match(conditionalPattern);
+
+    if (!match) {
+        return result; // No conditionals found
+    }
+
+    var condition = match[1].trim();  // e.g., "orphanCapabilities.length > 0"
+    var conditionalContent = match[2]; // Content inside the conditional
+    var fullMatch = match[0];          // The entire {{#if}}...{{/if}} block
+
+    // Evaluate the condition
+    var conditionResult = evaluateIfCondition(condition, data, parentContext);
+
+    var replacement = "";
+    if (conditionResult) {
+        // Condition is true, include the content (don't process it yet, let the caller handle nested processing)
+        replacement = conditionalContent;
+    }
+    // else: Condition is false, replace with empty string
+
+    // Replace this conditional with the result
+    result = result.replace(fullMatch, replacement);
+
+    // Continue processing any remaining conditionals at this level (ITERATIVE)
+    result = processConditionals(result, data, parentContext);
+
+    return result;
+}
+
+/**
+ * Evaluate an if condition
+ * Supports: property.length > 0, property.length == 0, property exists, property
+ * @param {string} condition - Condition string
+ * @param {object} data - Global data object
+ * @param {object} parentContext - Parent context (for nested conditions)
+ * @returns {boolean} True if condition is met
+ */
+function evaluateIfCondition(condition, data, parentContext) {
+    // Pattern: property.length > number
+    var lengthGreaterMatch = condition.match(/^([\w.]+)\.length\s*>\s*(\d+)$/);
+    if (lengthGreaterMatch) {
+        var propertyPath = lengthGreaterMatch[1];
+        var threshold = parseInt(lengthGreaterMatch[2], 10);
+        var value = getPropertyFromContext(propertyPath, data, parentContext);
+
+        // DEBUG
+        console.log("DEBUG {{#if}}: condition=" + condition + ", value=" + (value ? value.length : "null") + ", threshold=" + threshold);
+
+        if (value && value.length !== undefined) {
+            return value.length > threshold;
+        }
+        return false;
+    }
+
+    // Pattern: property.length == number
+    var lengthEqualMatch = condition.match(/^([\w.]+)\.length\s*==\s*(\d+)$/);
+    if (lengthEqualMatch) {
+        var propertyPath = lengthEqualMatch[1];
+        var expectedLength = parseInt(lengthEqualMatch[2], 10);
+        var value = getPropertyFromContext(propertyPath, data, parentContext);
+
+        if (value && value.length !== undefined) {
+            return value.length == expectedLength;
+        }
+        return false;
+    }
+
+    // Pattern: property.length < number
+    var lengthLessMatch = condition.match(/^([\w.]+)\.length\s*<\s*(\d+)$/);
+    if (lengthLessMatch) {
+        var propertyPath = lengthLessMatch[1];
+        var threshold = parseInt(lengthLessMatch[2], 10);
+        var value = getPropertyFromContext(propertyPath, data, parentContext);
+
+        if (value && value.length !== undefined) {
+            return value.length < threshold;
+        }
+        return false;
+    }
+
+    // Pattern: property exists
+    var existsMatch = condition.match(/^([\w.]+)\s+exists$/);
+    if (existsMatch) {
+        var propertyPath = existsMatch[1];
+        var value = getPropertyFromContext(propertyPath, data, parentContext);
+        return value !== null && value !== undefined && value !== "";
+    }
+
+    // Pattern: property (truthy check)
+    var truthyMatch = condition.match(/^([\w.]+)$/);
+    if (truthyMatch) {
+        var propertyPath = truthyMatch[1];
+        var value = getPropertyFromContext(propertyPath, data, parentContext);
+
+        // Truthy check
+        if (value === null || value === undefined || value === "" || value === false) {
+            return false;
+        }
+
+        // Empty array is falsy
+        if (value.length !== undefined && value.length === 0) {
+            return false;
+        }
+
+        return true;
+    }
+
+    // Unknown condition format
+    console.log("[WARNING] Unknown {{#if}} condition format: " + condition);
+    return false;
+}
+
+/**
+ * Get a property value from data or parent context
+ * @param {string} propertyPath - Property path (e.g., "orphanCapabilities" or "group.name")
+ * @param {object} data - Global data object
+ * @param {object} parentContext - Parent context
+ * @returns {*} Property value or null
+ */
+function getPropertyFromContext(propertyPath, data, parentContext) {
+    // First try to get from parent context (for nested properties)
+    if (parentContext) {
+        var value = getNestedProperty(parentContext, propertyPath);
+        if (value !== null) {
+            return value;
+        }
+    }
+
+    // Otherwise get from global data
+    return getNestedProperty(data, propertyPath);
 }
 
 // =====================================================
@@ -172,6 +324,9 @@ function processLoops(template, data, parentContext) {
         for (var i = 0; i < filteredCollection.length; i++) {
             var item = filteredCollection[i];
             var itemContent = loopContent;
+
+            // Process any conditionals within this iteration (with item as parent context)
+            itemContent = processConditionals(itemContent, data, item);
 
             // Replace variables in this iteration
             itemContent = replaceContextVariables(itemContent, contextName, item, data);
