@@ -272,6 +272,7 @@ function getPropertyFromContext(propertyPath, data, parentContext) {
  * Process all {{#each}}...{{/each}} loops in the template
  * Uses named closing tags: {{#each groups}}...{{/each groups}}
  * Supports WHERE conditions: {{#each groups where type="capability"}}
+ * Supports nested paths: {{#each group.children}}
  * @param {string} template - Template content
  * @param {object} data - Data object
  * @param {object} parentContext - Context from parent loop (for nested loops)
@@ -282,30 +283,69 @@ function processLoops(template, data, parentContext) {
 
     // Find loop with optional WHERE clause: {{#each XXX where CONDITION}}...{{/each XXX}}
     // The \1 backreference ensures the closing tag matches the opening tag
-    var loopPattern = /\{\{#each\s+(\w+)(?:\s+where\s+([^}]+))?\}\}([\s\S]*?)\{\{\/each\s+\1\}\}/;
+    // Support paths with dots: group.children, element.visualChildren
+    var loopPattern = /\{\{#each\s+([\w.]+)(?:\s+where\s+([^}]+))?\}\}([\s\S]*?)\{\{\/each\s+\1\}\}/;
     var match = result.match(loopPattern);
 
     if (!match) {
         return result; // No loops found
     }
 
-    var collectionName = match[1]; // e.g., "groups" or "capabilities"
+    var collectionName = match[1]; // e.g., "groups", "capabilities", or "group.children"
     var whereClause = match[2];    // e.g., 'type="capability" AND properties.Status="Active"' or null
     var loopContent = match[3];    // Content inside the loop (may contain nested loops)
     var fullMatch = match[0];      // The entire {{#each}}...{{/each}} block
 
-    // Determine the singular context name (e.g., "groups" -> "group")
-    var contextName = getSingularName(collectionName);
+    // Extract last segment for singular name (e.g., "group.children" -> "children" -> "child")
+    var lastSegment = collectionName.indexOf(".") >= 0
+        ? collectionName.split(".").pop()
+        : collectionName;
+    var contextName = getSingularName(lastSegment);
+
+    // Detect naming conflict: if parentContext already has a property with this contextName,
+    // it means we're in a nested loop with the same collection name (e.g., child.children inside group.children)
+    // In this case, prefix with the parent's type to create a unique context name
+    if (parentContext && parentContext.type) {
+        // Check if this would create a conflict by seeing if parentContext matches the contextName
+        // For example: if contextName is "child" and we're iterating over child.children
+        var parentType = parentContext.type;
+
+        // If the singular form matches, we have a conflict - prefix with parent's element type
+        // This creates names like "capability-child" instead of just "child"
+        if (collectionName.indexOf(".") >= 0) {
+            var parentPrefix = collectionName.split(".")[0]; // "child" from "child.children"
+            if (parentPrefix === contextName) {
+                // Conflict detected: use "nested" + contextName
+                contextName = "nested" + contextName.charAt(0).toUpperCase() + contextName.slice(1);
+            }
+        }
+    }
 
     // Get the collection from data or parent context
     var collection = null;
 
-    // First try to get from parent context (for nested properties like group.capabilities)
-    if (parentContext && parentContext[collectionName]) {
-        collection = parentContext[collectionName];
-    } else if (data[collectionName]) {
-        // Otherwise get from global data
-        collection = data[collectionName];
+    // Support nested paths (group.children, element.visualChildren, etc.)
+    if (collectionName.indexOf(".") >= 0) {
+        // Extract the property name (last segment after the dot)
+        var segments = collectionName.split(".");
+        var propertyName = segments[segments.length - 1]; // "children", "visualChildren", etc.
+
+        // Look for the property in parent context first
+        if (parentContext && parentContext[propertyName]) {
+            collection = parentContext[propertyName];
+        } else {
+            // Fallback: try full path in global data
+            collection = getPropertyFromContext(collectionName, data, null);
+        }
+    } else {
+        // Simple property name: use original logic
+        // First try to get from parent context
+        if (parentContext && parentContext[collectionName]) {
+            collection = parentContext[collectionName];
+        } else if (data[collectionName]) {
+            // Otherwise get from global data
+            collection = data[collectionName];
+        }
     }
 
     var expanded = "";
@@ -470,7 +510,7 @@ function evaluateCondition(item, condition) {
     }
 
     // Check for != (not equal)
-    var notEqualMatch = condition.match(/^([\w.]+)\s*!=\s*"([^"]+)"$/);
+    var notEqualMatch = condition.match(/^([\w.]+)\s*!=\s*"([^"]*)"$/);
     if (notEqualMatch) {
         var field = notEqualMatch[1];
         var expectedValue = notEqualMatch[2];
@@ -484,7 +524,7 @@ function evaluateCondition(item, condition) {
     }
 
     // Check for = (equal)
-    var equalMatch = condition.match(/^([\w.]+)\s*=\s*"([^"]+)"$/);
+    var equalMatch = condition.match(/^([\w.]+)\s*=\s*"([^"]*)"$/);
     if (equalMatch) {
         var field = equalMatch[1];
         var expectedValue = equalMatch[2];
@@ -495,6 +535,71 @@ function evaluateCondition(item, condition) {
         }
 
         return actualValue.toString() === expectedValue;
+    }
+
+    // Check for property.length > number
+    var lengthGreaterMatch = condition.match(/^([\w.]+)\.length\s*>\s*(\d+)$/);
+    if (lengthGreaterMatch) {
+        var field = lengthGreaterMatch[1];
+        var threshold = parseInt(lengthGreaterMatch[2], 10);
+        var value = getNestedProperty(item, field);
+
+        if (value && value.length !== undefined) {
+            return value.length > threshold;
+        }
+        return false;
+    }
+
+    // Check for property.length >= number
+    var lengthGreaterEqualMatch = condition.match(/^([\w.]+)\.length\s*>=\s*(\d+)$/);
+    if (lengthGreaterEqualMatch) {
+        var field = lengthGreaterEqualMatch[1];
+        var threshold = parseInt(lengthGreaterEqualMatch[2], 10);
+        var value = getNestedProperty(item, field);
+
+        if (value && value.length !== undefined) {
+            return value.length >= threshold;
+        }
+        return false;
+    }
+
+    // Check for property.length < number
+    var lengthLessMatch = condition.match(/^([\w.]+)\.length\s*<\s*(\d+)$/);
+    if (lengthLessMatch) {
+        var field = lengthLessMatch[1];
+        var threshold = parseInt(lengthLessMatch[2], 10);
+        var value = getNestedProperty(item, field);
+
+        if (value && value.length !== undefined) {
+            return value.length < threshold;
+        }
+        return false;
+    }
+
+    // Check for property.length <= number
+    var lengthLessEqualMatch = condition.match(/^([\w.]+)\.length\s*<=\s*(\d+)$/);
+    if (lengthLessEqualMatch) {
+        var field = lengthLessEqualMatch[1];
+        var threshold = parseInt(lengthLessEqualMatch[2], 10);
+        var value = getNestedProperty(item, field);
+
+        if (value && value.length !== undefined) {
+            return value.length <= threshold;
+        }
+        return false;
+    }
+
+    // Check for property.length == number
+    var lengthEqualMatch = condition.match(/^([\w.]+)\.length\s*==\s*(\d+)$/);
+    if (lengthEqualMatch) {
+        var field = lengthEqualMatch[1];
+        var expectedLength = parseInt(lengthEqualMatch[2], 10);
+        var value = getNestedProperty(item, field);
+
+        if (value && value.length !== undefined) {
+            return value.length == expectedLength;
+        }
+        return false;
     }
 
     // Unknown condition format - log warning and return false
@@ -508,6 +613,11 @@ function evaluateCondition(item, condition) {
  * @returns {string} Singular name (e.g., "group")
  */
 function getSingularName(plural) {
+    // Special cases
+    if (plural === "children") {
+        return "child";
+    }
+
     // Simple pluralization rules
     if (plural.endsWith("ies")) {
         return plural.substring(0, plural.length - 3) + "y";

@@ -1,0 +1,255 @@
+/*
+ * Template Helpers
+ *
+ * Utility functions for template processing:
+ * - Text helpers (uppercase, lowercase, escape, truncate)
+ * - Collection helpers (filter, sort, deduplicate)
+ * - Format helpers (number, date)
+ *
+ * Version 1.0
+ */
+
+// =====================================================
+// Helper Application
+// =====================================================
+
+/**
+ * Apply a helper function to a value
+ * @param {*} value - Input value
+ * @param {string} helperExpression - Helper name with optional arguments (e.g., "truncate:50")
+ * @returns {*} Transformed value
+ */
+function applyHelper(value, helperExpression) {
+    var colonIndex = helperExpression.indexOf(":");
+    var helperName, helperArgs;
+
+    if (colonIndex > 0) {
+        helperName = helperExpression.substring(0, colonIndex).trim();
+        helperArgs = helperExpression.substring(colonIndex + 1).trim();
+    } else {
+        helperName = helperExpression.trim();
+        helperArgs = "";
+    }
+
+    // Call appropriate helper function
+    switch (helperName) {
+        // Text helpers
+        case "uppercase": return uppercase(value);
+        case "lowercase": return lowercase(value);
+        case "escape": return escapeMD(value);
+        case "truncate": return truncate(value, helperArgs);
+        case "newlines": return newlinesToBr(value);
+
+        // Format helpers
+        case "number": return formatNumber(value);
+
+        default:
+            console.warn("Unknown helper: " + helperName);
+            return value;
+    }
+}
+
+// =====================================================
+// Text Helpers
+// =====================================================
+
+/**
+ * Convert to uppercase
+ * @param {string} value - Input string
+ * @returns {string} Uppercase string
+ */
+function uppercase(value) {
+    return String(value).toUpperCase();
+}
+
+/**
+ * Convert to lowercase
+ * @param {string} value - Input string
+ * @returns {string} Lowercase string
+ */
+function lowercase(value) {
+    return String(value).toLowerCase();
+}
+
+/**
+ * Escape Markdown special characters
+ * @param {string} value - Input string
+ * @returns {string} Escaped string
+ */
+function escapeMD(value) {
+    if (!value) return "";
+    return String(value)
+        .replace(/\|/g, "\\|")
+        .replace(/\n/g, " ");
+}
+
+/**
+ * Truncate string to specified length
+ * @param {string} value - Input string
+ * @param {string} lengthStr - Maximum length as string
+ * @returns {string} Truncated string
+ */
+function truncate(value, lengthStr) {
+    var maxLength = parseInt(lengthStr) || 50;
+    var str = String(value);
+
+    // Replace newlines and multiple spaces with single space for table compatibility
+    str = str.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ");
+
+    if (str.length <= maxLength) {
+        return str;
+    }
+
+    return str.substring(0, maxLength) + "...";
+}
+
+/**
+ * Convert newlines to <br> tags for Markdown tables
+ * @param {string} value - Input string
+ * @returns {string} String with <br> tags
+ */
+function newlinesToBr(value) {
+    if (!value) return "";
+    return String(value).replace(/\n/g, "<br>");
+}
+
+// =====================================================
+// Collection Helpers
+// =====================================================
+
+/**
+ * Filter collection by property values
+ * @param {array} collection - Input collection
+ * @param {object} filterArgs - Filter arguments {property: value}
+ * @returns {array} Filtered collection
+ */
+function filterBy(collection, filterArgs) {
+    if (!Array.isArray(collection)) {
+        return collection;
+    }
+
+    return collection.filter(function(item) {
+        for (var key in filterArgs) {
+            if (filterArgs.hasOwnProperty(key)) {
+                var itemValue = getNestedProperty(item, key);
+                var filterValue = filterArgs[key];
+
+                if (String(itemValue) !== String(filterValue)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    });
+}
+
+/**
+ * Sort collection by property
+ * @param {array} collection - Input collection
+ * @param {object} sortArgs - Sort arguments {by: "property"}
+ * @returns {array} Sorted collection
+ */
+function sortBy(collection, sortArgs) {
+    if (!Array.isArray(collection)) {
+        return collection;
+    }
+
+    var property = sortArgs.by || sortArgs;
+    if (typeof property !== "string") {
+        return collection;
+    }
+
+    var sorted = collection.slice(); // Create copy
+
+    sorted.sort(function(a, b) {
+        var aVal = getNestedProperty(a, property);
+        var bVal = getNestedProperty(b, property);
+
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
+
+        // String comparison
+        if (typeof aVal === "string" && typeof bVal === "string") {
+            return aVal.localeCompare(bVal);
+        }
+
+        // Numeric comparison
+        if (aVal < bVal) return -1;
+        if (aVal > bVal) return 1;
+        return 0;
+    });
+
+    return sorted;
+}
+
+/**
+ * Deduplicate array (remove duplicates)
+ * @param {array} collection - Input collection
+ * @returns {array} Deduplicated collection
+ */
+function deduplicateArray(collection) {
+    if (!Array.isArray(collection)) {
+        return collection;
+    }
+
+    var seen = {};
+    var result = [];
+
+    for (var i = 0; i < collection.length; i++) {
+        var item = collection[i];
+        var key = item.id || JSON.stringify(item);
+
+        if (!seen[key]) {
+            seen[key] = true;
+            result.push(item);
+        }
+    }
+
+    return result;
+}
+
+// =====================================================
+// Format Helpers
+// =====================================================
+
+/**
+ * Format number with thousand separators
+ * @param {number} value - Input number
+ * @returns {string} Formatted number
+ */
+function formatNumber(value) {
+    var num = parseFloat(value);
+    if (isNaN(num)) {
+        return value;
+    }
+
+    return num.toLocaleString();
+}
+
+// =====================================================
+// Helper function (already defined in templateProcessor but repeated here for clarity)
+// =====================================================
+
+/**
+ * Get nested property from object using dot notation
+ * @param {object} obj - Object to query
+ * @param {string} path - Property path (e.g., "view.name")
+ * @returns {*} Property value or null
+ */
+function getNestedProperty(obj, path) {
+    if (typeof path !== "string") {
+        return obj[path];
+    }
+
+    var parts = path.split(".");
+    var current = obj;
+
+    for (var i = 0; i < parts.length; i++) {
+        if (current === null || current === undefined) {
+            return null;
+        }
+        current = current[parts[i]];
+    }
+
+    return current;
+}

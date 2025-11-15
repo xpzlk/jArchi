@@ -1,0 +1,332 @@
+/*
+ * Extract Markdown Documentation
+ *
+ * Generic template-based documentation generator for ArchiMate views
+ *
+ * Generates:
+ * - A Markdown file based on the selected template
+ * - A PNG image of the view
+ *
+ * Version 2.0 - Rewritten with generic template engine
+ */
+
+// Load libraries
+load(__DIR__ + "lib\\templateEngine.ajs");
+load(__DIR__ + "lib\\dataExtractor.ajs");
+
+console.clear();
+console.show();
+
+// =====================================================
+// Helper Functions
+// =====================================================
+
+/**
+ * Sanitize a filename by removing/replacing invalid characters
+ */
+function sanitizeFilename(name) {
+    return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '-');
+}
+
+/**
+ * Discover all available templates in the specified templates directory
+ * @param {string} templatesDirPath - Path to the templates directory
+ * @returns {Array} Array of template file objects {filename, displayName}
+ */
+function discoverTemplates(templatesDirPath) {
+    var templates = [];
+    var imports = new JavaImporter(java.io);
+
+    with (imports) {
+        var templatesDir = new File(templatesDirPath);
+
+        if (!templatesDir.exists() || !templatesDir.isDirectory()) {
+            console.error("ERROR: Templates directory not found: " + templatesDir.getPath());
+            return templates;
+        }
+
+        var files = templatesDir.listFiles();
+
+        if (files != null) {
+            for (var i = 0; i < files.length; i++) {
+                var file = files[i];
+                var fileName = file.getName();
+
+                // Match pattern: *.md
+                if (fileName.endsWith(".md")) {
+                    var displayName = getTemplateDisplayName(templatesDirPath, fileName);
+                    templates.push({
+                        filename: fileName,
+                        displayName: displayName
+                    });
+                }
+            }
+        }
+    }
+
+    return templates;
+}
+
+/**
+ * Extract a readable name from template filename or YAML front matter
+ * @param {string} templatesDirPath - Path to templates directory
+ * @param {string} filename - Template filename
+ * @returns {string} Human-readable template name
+ */
+function getTemplateDisplayName(templatesDirPath, filename) {
+    // Try to read YAML front matter title
+    var templatePath = templatesDirPath + (templatesDirPath.endsWith("\\") || templatesDirPath.endsWith("/") ? "" : "\\") + filename;
+    var title = extractYAMLTitle(templatePath);
+
+    if (title) {
+        return title;
+    }
+
+    // Fallback: extract from filename
+    var name = filename.replace(".md", "");
+
+    // Remove common prefixes
+    name = name.replace(/^extract_view_/, "");
+    name = name.replace(/_template$/, "");
+
+    // Replace underscores with spaces and capitalize
+    name = name.replace(/_/g, " ");
+
+    return name;
+}
+
+/**
+ * Extract the title from YAML front matter
+ * @param {string} filePath - Path to the template file
+ * @returns {string|null} Title from YAML front matter, or null if not found
+ */
+function extractYAMLTitle(filePath) {
+    try {
+        var content = readTemplateFile(filePath);
+
+        // Check if file starts with YAML front matter (---)
+        if (!content.startsWith("---")) {
+            return null;
+        }
+
+        // Find the closing --- of the front matter
+        var secondDelimiter = content.indexOf("\n---", 3);
+        if (secondDelimiter === -1) {
+            return null;
+        }
+
+        // Extract YAML content (between the two ---)
+        var yamlContent = content.substring(4, secondDelimiter);
+
+        // Parse title field (simple regex for title: "value" or title: value)
+        var titleMatch = yamlContent.match(/title:\s*["']?([^"'\n]+)["']?/);
+
+        if (titleMatch && titleMatch[1]) {
+            return titleMatch[1].trim();
+        }
+
+        return null;
+    } catch (e) {
+        console.log("Warning: Could not read YAML front matter from " + filePath + ": " + e);
+        return null;
+    }
+}
+
+/**
+ * Export view as PNG image
+ * @param {object} view - The ArchiMate view
+ * @param {string} outputPath - Path where to save the PNG
+ * @returns {string} Filename of the generated image
+ */
+function exportViewImage(view, outputPath) {
+    console.log("Exporting view image...");
+
+    var viewFilename = sanitizeFilename(view.name);
+    var pngFilename = viewFilename + ".png";
+    var pngPath = outputPath + pngFilename;
+
+    // Render view as PNG (base64 encoded)
+    var pngOptions = {
+        scale: 2,
+        margin: 10
+    };
+    var pngBytes = $.model.renderViewAsBase64(view, "PNG", pngOptions);
+
+    // Save PNG file
+    $.fs.writeFile(pngPath, pngBytes, "BASE64");
+
+    console.log("  Image saved: " + pngFilename);
+
+    return pngFilename;
+}
+
+// =====================================================
+// Main Function - Encapsulated for caller scripts
+// =====================================================
+
+/**
+ * Main extraction function - can be called from client-specific scripts
+ * @param {string} templatesDirPath - Path to the directory containing templates
+ * @param {string} outputDir - Optional output directory (defaults to __DIR__)
+ */
+function extractMD(templatesDirPath, outputDir) {
+    console.log("=== Extract Markdown Documentation ===");
+    console.log("");
+
+    // Default output directory
+    if (!outputDir) {
+        outputDir = __DIR__;
+    }
+
+    // Validate selection
+    var theView = $(selection).filter("archimate-diagram-model").first();
+    if (!theView) {
+        window.alert("Veuillez d'abord sélectionner une vue ArchiMate.");
+        console.error("ERROR: No view selected");
+        exit();
+    }
+
+    console.log("Vue sélectionnée: " + theView.name);
+    console.log("");
+
+    // =====================================================
+    // Discover and Select Template
+    // =====================================================
+
+    console.log("Recherche des templates disponibles...");
+    console.log("Répertoire: " + templatesDirPath);
+    var templates = discoverTemplates(templatesDirPath);
+
+    if (templates.length === 0) {
+        window.alert("Aucun template trouvé!\n\nVeuillez placer au moins un fichier .md dans:\n" + templatesDirPath);
+        console.error("ERROR: No templates found");
+        exit();
+    }
+
+    console.log("Templates trouvés: " + templates.length);
+    for (var i = 0; i < templates.length; i++) {
+        console.log("  - " + templates[i].displayName + " (" + templates[i].filename + ")");
+    }
+    console.log("");
+
+    // Present selection dialog to user
+    var templateNames = [];
+    for (var i = 0; i < templates.length; i++) {
+        templateNames.push(templates[i].displayName);
+    }
+
+    var selectedName = window.promptSelection("Sélectionnez le template à utiliser:", templateNames);
+
+    if (selectedName === null || selectedName === undefined || selectedName === "") {
+        console.log("Template selection cancelled by user");
+        exit();
+    }
+
+    // Find the selected template
+    var selectedTemplate = null;
+    for (var i = 0; i < templates.length; i++) {
+        if (templates[i].displayName === selectedName.toString()) {
+            selectedTemplate = templates[i];
+            break;
+        }
+    }
+
+    if (selectedTemplate === null) {
+        console.error("ERROR: Could not find template: " + selectedName);
+        exit();
+    }
+
+    console.log("Template sélectionné: " + selectedTemplate.displayName);
+    console.log("");
+
+    // =====================================================
+    // Load Template
+    // =====================================================
+
+    var templatePath = templatesDirPath + (templatesDirPath.endsWith("\\") || templatesDirPath.endsWith("/") ? "" : "\\") + selectedTemplate.filename;
+    console.log("Chargement du template: " + templatePath);
+
+    var templateContent = readTemplateFile(templatePath);
+
+    console.log("  Template chargé: " + templateContent.length + " caractères");
+    console.log("");
+
+    // =====================================================
+    // Extract Data from View
+    // =====================================================
+
+    var data = extractViewData(theView);
+    console.log("");
+
+    // =====================================================
+    // Export View Image
+    // =====================================================
+
+    var imageFilename = exportViewImage(theView, outputDir);
+
+    // Add image filename to data
+    data.imageFilename = imageFilename;
+
+    console.log("");
+
+    // =====================================================
+    // Process Template
+    // =====================================================
+
+    var markdown = processTemplate(templateContent, data);
+
+    console.log("");
+
+    // =====================================================
+    // Save Markdown File
+    // =====================================================
+
+    var viewFilename = sanitizeFilename(theView.name);
+    var mdFilename = viewFilename + ".md";
+    var mdPath = outputDir + (outputDir.endsWith("\\") || outputDir.endsWith("/") ? "" : "\\") + mdFilename;
+
+    $.fs.writeFile(mdPath, markdown);
+
+    console.log("Fichier Markdown sauvegardé: " + mdFilename);
+    console.log("");
+
+    // =====================================================
+    // Success
+    // =====================================================
+
+    console.log("=== Documentation générée avec succès ===");
+    console.log("Fichiers créés:");
+    console.log("  - " + mdFilename);
+    console.log("  - " + imageFilename);
+
+    // Show success message
+    window.alert("Documentation générée avec succès!\n\nFichiers créés:\n- " + mdFilename + "\n- " + imageFilename);
+}
+
+// =====================================================
+// Main Script - Direct execution only
+// =====================================================
+
+// Only execute if this script is run directly (not loaded as a library)
+// When loaded via load(), __CALLER_SCRIPT__ will be defined by the caller
+if (typeof __CALLER_SCRIPT__ === "undefined") {
+    // Check if templates directory exists locally (old structure)
+    var localTemplatesDir = __DIR__ + "templates\\";
+    var imports = new JavaImporter(java.io);
+    var hasLocalTemplates = false;
+
+    with (imports) {
+        var dir = new File(localTemplatesDir);
+        hasLocalTemplates = dir.exists() && dir.isDirectory();
+    }
+
+    if (hasLocalTemplates) {
+        console.log("WARNING: Using deprecated local templates directory.");
+        console.log("Consider creating a client-specific caller script instead.");
+        console.log("");
+        extractMD(localTemplatesDir);
+    } else {
+        window.alert("Ce script doit être appelé par un script client-spécifique.\n\nExemple:\nz_SITEL/extractMD/extractMD_SITEL.ajs");
+        console.error("ERROR: No templates directory found. Use a client-specific caller script.");
+    }
+}

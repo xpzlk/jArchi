@@ -1,0 +1,183 @@
+console.clear();
+load(__DIR__ + "viewExtractor.ajs");
+var viewData = extractCompleteViewStructure(selection[0]);
+
+// Test deduplication
+console.log("\n=== TESTING DEDUPLICATION ===");
+var deduplicatedData = deduplicateViewData(viewData);
+console.log("\nComparison:");
+console.log("  Elements: " + viewData.elements.length + " -> " + deduplicatedData.elements.length +
+            " (" + (viewData.elements.length - deduplicatedData.elements.length) + " duplicates removed)");
+console.log("  Relationships: " + viewData.relationships.length + " -> " + deduplicatedData.relationships.length +
+            " (" + (viewData.relationships.length - deduplicatedData.relationships.length) + " duplicates removed)");
+console.log("  Visual Containments: " + viewData.visualContainment.length + " -> " + deduplicatedData.visualContainment.length);
+
+// Test sorting by visual position
+console.log("\n=== TESTING SORT BY VISUAL POSITION ===");
+
+// Sort top-to-bottom, left-to-right (default)
+var sortedY = sortElementsByVisualPosition(viewData, "y-then-x");
+console.log("\nSorted (y-then-x): " + sortedY.length + " elements");
+
+// Sort left-to-right, top-to-bottom
+var sortedX = sortElementsByVisualPosition(viewData, "x-then-y");
+console.log("Sorted (x-then-y): " + sortedX.length + " elements");
+
+// Show first 10 elements with their positions (y-then-x sort)
+console.log("\n=== FIRST 10 ELEMENTS (y-then-x) ===");
+for (var i = 0; i < Math.min(10, sortedY.length); i++) {
+    var el = sortedY[i];
+    var posInfo = "";
+    if (el.bounds) {
+        posInfo = " [x:" + el.bounds.x + ", y:" + el.bounds.y + "]";
+    }
+    var parentInfo = el.visualParentId ? " (parent: " + el.visualParentId.substring(0, 8) + "...)" : " (root)";
+    console.log((i+1) + ". " + el.name + posInfo + parentInfo);
+}
+
+// Create a JSON-safe version (without circular references)
+function makeJsonSafe(obj, depth, maxDepth) {
+    if (depth === undefined) depth = 0;
+    if (maxDepth === undefined) maxDepth = 3;
+
+    if (depth > maxDepth) {
+        return "[Max depth reached]";
+    }
+
+    if (obj === null || obj === undefined) {
+        return obj;
+    }
+
+    if (typeof obj !== "object") {
+        return obj;
+    }
+
+    if (Array.isArray(obj)) {
+        var result = [];
+        for (var i = 0; i < obj.length; i++) {
+            result.push(makeJsonSafe(obj[i], depth + 1, maxDepth));
+        }
+        return result;
+    }
+
+    var result = {};
+    for (var key in obj) {
+        if (!obj.hasOwnProperty(key)) continue;
+
+        // Skip circular reference properties
+        if (key === "visualParent" || key === "visualChildren" ||
+            key === "source" || key === "target" ||
+            key === "sourceElement" || key === "targetElement") {
+            continue;
+        }
+
+        result[key] = makeJsonSafe(obj[key], depth + 1, maxDepth);
+    }
+    return result;
+}
+
+// Print summary
+console.log("\n=== SUMMARY ===");
+console.log("View: " + viewData.view.name);
+console.log("Elements: " + viewData.elements.length);
+console.log("Relationships: " + viewData.relationships.length);
+console.log("Visual Containments: " + viewData.visualContainment.length);
+
+// Sample elements
+console.log("\n=== SAMPLE ELEMENTS (first 3) ===");
+for (var i = 0; i < Math.min(3, viewData.elements.length); i++) {
+    var el = viewData.elements[i];
+    console.log("\nElement " + (i+1) + ":");
+    console.log("  ID: " + el.id);
+    console.log("  Type: " + el.type);
+    console.log("  Name: " + el.name);
+    console.log("  Documentation: " + (el.documentation ? el.documentation.substring(0, 50) + "..." : "(none)"));
+    console.log("  Is Group: " + el.isGroup);
+    console.log("  Is Note: " + el.isNote);
+    console.log("  Is Element: " + el.isElement);
+    console.log("  Visual parent ID: " + (el.visualParentId || "(none)"));
+    console.log("  Visual children count: " + el.visualChildren.length);
+
+    if (el.bounds) {
+        console.log("  Bounds: x=" + el.bounds.x + ", y=" + el.bounds.y +
+                    ", w=" + el.bounds.width + ", h=" + el.bounds.height);
+    }
+
+    if (el.style.fillColor || el.style.fontColor) {
+        console.log("  Style: fill=" + (el.style.fillColor || "default") +
+                    ", font=" + (el.style.fontColor || "default"));
+    }
+
+    var propCount = 0;
+    for (var key in el.properties) {
+        if (el.properties.hasOwnProperty(key)) propCount++;
+    }
+    if (propCount > 0) {
+        console.log("  Custom properties (" + propCount + "):");
+        for (var key in el.properties) {
+            if (el.properties.hasOwnProperty(key)) {
+                console.log("    - " + key + ": " + el.properties[key]);
+            }
+        }
+    }
+}
+
+// Sample relationships
+console.log("\n=== SAMPLE RELATIONSHIPS (first 3) ===");
+for (var i = 0; i < Math.min(3, viewData.relationships.length); i++) {
+    var rel = viewData.relationships[i];
+    console.log("\nRelationship " + (i+1) + ":");
+    console.log("  ID: " + rel.id);
+    console.log("  Type: " + rel.type);
+    console.log("  Name: " + rel.name);
+    console.log("  Source ID: " + rel.sourceId);
+    console.log("  Target ID: " + rel.targetId);
+    if (rel.source) {
+        console.log("  Source element: " + rel.source.name + " (" + rel.source.type + ")");
+    }
+    if (rel.target) {
+        console.log("  Target element: " + rel.target.name + " (" + rel.target.type + ")");
+    }
+}
+
+// Sample visual containments
+console.log("\n=== SAMPLE VISUAL CONTAINMENTS (first 5) ===");
+for (var i = 0; i < Math.min(5, viewData.visualContainment.length); i++) {
+    var cont = viewData.visualContainment[i];
+    console.log("\nContainment " + (i+1) + ":");
+    console.log("  Type: " + cont.type);
+    console.log("  Parent ID: " + cont.source);
+    console.log("  Child ID: " + cont.target);
+    if (cont.sourceElement && cont.targetElement) {
+        console.log("  Parent: " + cont.sourceElement.name + " (" + cont.sourceElement.type + ")");
+        console.log("  Child: " + cont.targetElement.name + " (" + cont.targetElement.type + ")");
+    }
+}
+
+// Type statistics
+console.log("\n=== ELEMENT TYPES ===");
+var typeStats = {};
+for (var i = 0; i < viewData.elements.length; i++) {
+    var type = viewData.elements[i].type;
+    if (!typeStats[type]) {
+        typeStats[type] = 0;
+    }
+    typeStats[type]++;
+}
+for (var type in typeStats) {
+    console.log("  " + type + ": " + typeStats[type]);
+}
+
+// Relationship types
+console.log("\n=== RELATIONSHIP TYPES ===");
+var relTypeStats = {};
+for (var i = 0; i < viewData.relationships.length; i++) {
+    var type = viewData.relationships[i].type;
+    if (!relTypeStats[type]) {
+        relTypeStats[type] = 0;
+    }
+    relTypeStats[type]++;
+}
+for (var type in relTypeStats) {
+    console.log("  " + type + ": " + relTypeStats[type]);
+}

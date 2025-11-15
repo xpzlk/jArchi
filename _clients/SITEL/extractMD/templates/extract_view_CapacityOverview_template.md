@@ -6,14 +6,14 @@ title: "Capacity Overview"
 
 {{view.image.png}}
 
-{{#each groups where name != "Légende"}}
+{{#each groups where name != "Légende" AND name != ""}}
 ## {{group.name}}
 
 |Capacité|Intention|
 |-|-|
-{{#each capabilities}}
-|{{capability.name}}|{{capability.documentation}}|
-{{/each capabilities}}
+{{#each group.children}}
+|{{child.name}}|{{child.documentation}}|
+{{/each group.children}}
 
 {{/each groups}}
 

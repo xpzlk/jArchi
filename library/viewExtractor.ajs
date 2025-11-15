@@ -1,0 +1,796 @@
+/*
+ * View Extractor Library
+ *
+ * Complete extraction of all elements, objects, groups, and relationships from an ArchiMate view
+ * with ALL available properties and information.
+ *
+ * This library provides a reusable function to extract the complete structure of a view
+ * including visual hierarchy, semantic relationships, and all properties.
+ *
+ * Version 1.0
+ *
+ * Usage:
+ *   load(__DIR__ + "library/viewExtractor.ajs");
+ *   var viewData = extractCompleteViewStructure(view);
+ *
+ * Output structure:
+ * {
+ *   view: { ... view metadata ... },
+ *   elements: [ ... all visual elements with full properties ... ],
+ *   relationships: [ ... visual relationships ... ],
+ *   visualContainment: [ ... virtual containment relationships ... ]
+ * }
+ */
+
+// =====================================================
+// Main Extraction Function
+// =====================================================
+
+/**
+ * Extract complete view structure with ALL properties
+ * @param {object} view - The ArchiMate view to extract data from
+ * @returns {object} Complete view structure with elements, relationships, and containment
+ */
+function extractCompleteViewStructure(view) {
+    console.log("=== Starting Complete View Extraction ===");
+    console.log("View: " + view.name);
+
+    var result = {
+        // View metadata
+        view: extractViewMetadata(view),
+
+        // All visual elements (elements, groups, notes)
+        elements: [],
+
+        // Visual relationships (connections visible in the view)
+        relationships: [],
+
+        // Virtual containment relationships
+        visualContainment: []
+    };
+
+    // Maps for building relationships
+    var elementsMap = {};  // Map by ID for quick lookup
+    var visualParentMap = {};  // Track visual parent-child relationships
+
+    // Pass 1: Extract all visual elements (except relationships)
+    console.log("Pass 1: Extracting visual elements...");
+    $(view).find().each(function(visualObj) {
+        // Skip relationships (will be processed in Pass 2)
+        if (isRelationship(visualObj)) {
+            return;
+        }
+
+        var elementData = extractElementData(visualObj);
+        result.elements.push(elementData);
+        elementsMap[elementData.id] = elementData;
+
+        // Track visual parent for containment relationships
+        var parentObj = findVisualParent(visualObj);
+        if (parentObj) {
+            visualParentMap[elementData.id] = parentObj.id;
+        }
+    });
+
+    console.log("  Extracted " + result.elements.length + " elements");
+
+    // Pass 2: Extract visual relationships
+    console.log("Pass 2: Extracting relationships...");
+    $(view).find("relationship").each(function(rel) {
+        var relationshipData = extractRelationshipData(rel, elementsMap);
+        if (relationshipData) {
+            result.relationships.push(relationshipData);
+        }
+    });
+
+    console.log("  Extracted " + result.relationships.length + " relationships");
+
+    // Pass 3: Enrich elements with visual parent/children references
+    console.log("Pass 3: Enriching with visual hierarchy...");
+    enrichElementsWithVisualHierarchy(result.elements, visualParentMap, elementsMap);
+
+    // Pass 4: Build virtual containment relationships
+    console.log("Pass 4: Building virtual containment relationships...");
+    for (var childId in visualParentMap) {
+        var parentId = visualParentMap[childId];
+
+        result.visualContainment.push({
+            type: "visual-containment",
+            source: parentId,
+            target: childId,
+            sourceElement: elementsMap[parentId],
+            targetElement: elementsMap[childId]
+        });
+    }
+
+    console.log("  Created " + result.visualContainment.length + " containment relationships");
+
+    console.log("=== Extraction Complete ===");
+
+    return result;
+}
+
+// =====================================================
+// View Metadata Extraction
+// =====================================================
+
+/**
+ * Extract all metadata from the view itself
+ * @param {object} view - The ArchiMate view
+ * @returns {object} View metadata
+ */
+function extractViewMetadata(view) {
+    return {
+        id: view.id || null,
+        name: view.name || "",
+        documentation: view.documentation || "",
+        type: view.type || "",
+        // Add any other view-level properties here
+        properties: extractProperties(view)
+    };
+}
+
+// =====================================================
+// Element Data Extraction
+// =====================================================
+
+/**
+ * Extract ALL data from a visual element
+ * @param {object} visualObj - The visual object from the view
+ * @returns {object} Complete element data
+ */
+function extractElementData(visualObj) {
+    var data = {
+        // Basic identifiers
+        id: visualObj.id,
+        type: visualObj.type || "",
+
+        // Display properties
+        name: visualObj.name || "",
+        documentation: "",
+
+        // Visual properties
+        bounds: extractBounds(visualObj),
+        style: extractStyleProperties(visualObj),
+
+        // Element classification
+        isGroup: visualObj.type === "diagram-model-group",
+        isNote: visualObj.type === "diagram-model-note",
+        isElement: false,  // Will be set below if it has a concept
+
+        // Concept reference (for ArchiMate elements)
+        concept: null,
+
+        // Properties
+        properties: extractProperties(visualObj),
+
+        // Visual hierarchy (will be enriched later)
+        visualParent: null,
+        visualParentId: null,
+        visualChildren: [],
+        visualChildrenIds: [],
+
+        // All other available properties
+        allProperties: extractAllAvailableProperties(visualObj)
+    };
+
+    // If this is an ArchiMate element (has underlying concept)
+    if (visualObj.concept) {
+        data.isElement = true;
+        data.concept = extractConceptData(visualObj.concept);
+        data.documentation = visualObj.concept.documentation || "";
+
+        // Override name with concept name if available
+        if (visualObj.concept.name) {
+            data.name = visualObj.concept.name;
+        }
+    } else {
+        // For graphical objects (groups, notes), use visual object's documentation
+        data.documentation = visualObj.documentation || visualObj.content || "";
+    }
+
+    return data;
+}
+
+/**
+ * Extract concept (underlying ArchiMate element) data
+ * @param {object} concept - The concept object
+ * @returns {object} Concept data
+ */
+function extractConceptData(concept) {
+    return {
+        id: concept.id,
+        name: concept.name || "",
+        type: concept.type || "",
+        documentation: concept.documentation || "",
+        specialization: concept.specialization || null,
+        properties: extractProperties(concept)
+    };
+}
+
+// =====================================================
+// Relationship Data Extraction
+// =====================================================
+
+/**
+ * Extract ALL data from a relationship
+ * @param {object} rel - The relationship object
+ * @param {object} elementsMap - Map of elements by ID
+ * @returns {object|null} Complete relationship data or null if invalid
+ */
+function extractRelationshipData(rel, elementsMap) {
+    var source = rel.source;
+    var target = rel.target;
+
+    if (!source || !target) {
+        console.log("  [WARNING] Invalid relationship (missing source or target): " + rel.id);
+        return null;
+    }
+
+    var data = {
+        // Basic identifiers
+        id: rel.id,
+        type: rel.type || "",
+        name: rel.name || "",
+        documentation: rel.documentation || "",
+
+        // Source and target
+        sourceId: source.id,
+        targetId: target.id,
+        source: elementsMap[source.id] || null,
+        target: elementsMap[target.id] || null,
+
+        // Visual properties
+        style: extractStyleProperties(rel),
+
+        // Properties
+        properties: extractProperties(rel),
+
+        // Concept reference (for ArchiMate relationships)
+        concept: null,
+
+        // All other available properties
+        allProperties: extractAllAvailableProperties(rel)
+    };
+
+    // If this relationship has an underlying concept
+    if (rel.concept) {
+        data.concept = extractConceptData(rel.concept);
+
+        // Override with concept properties if available
+        if (rel.concept.name) {
+            data.name = rel.concept.name;
+        }
+        if (rel.concept.documentation) {
+            data.documentation = rel.concept.documentation;
+        }
+    }
+
+    return data;
+}
+
+// =====================================================
+// Visual Hierarchy Enrichment
+// =====================================================
+
+/**
+ * Enrich elements with visual parent and children references
+ * @param {array} elements - Array of all elements
+ * @param {object} visualParentMap - Map of child ID to parent ID
+ * @param {object} elementsMap - Map of elements by ID
+ */
+function enrichElementsWithVisualHierarchy(elements, visualParentMap, elementsMap) {
+    // First pass: Set visual parent references
+    for (var i = 0; i < elements.length; i++) {
+        var element = elements[i];
+        var parentId = visualParentMap[element.id];
+
+        if (parentId) {
+            element.visualParentId = parentId;
+            element.visualParent = elementsMap[parentId];
+        }
+    }
+
+    // Second pass: Build visual children arrays
+    for (var childId in visualParentMap) {
+        var parentId = visualParentMap[childId];
+        var parent = elementsMap[parentId];
+        var child = elementsMap[childId];
+
+        if (parent && child) {
+            parent.visualChildrenIds.push(childId);
+            parent.visualChildren.push(child);
+        }
+    }
+}
+
+// =====================================================
+// Property Extraction Functions
+// =====================================================
+
+/**
+ * Extract standard properties (custom user-defined properties)
+ * @param {object} obj - ArchiMate object (element, relationship, view)
+ * @returns {object} Key-value map of properties
+ */
+function extractProperties(obj) {
+    var properties = {};
+
+    if (obj && obj.prop) {
+        // Get all property names
+        var propNames = obj.prop();
+
+        if (propNames && propNames.length) {
+            for (var i = 0; i < propNames.length; i++) {
+                var propName = propNames[i];
+                var propValue = obj.prop(propName);
+                if (propValue !== null && propValue !== undefined) {
+                    properties[propName] = propValue;
+                }
+            }
+        }
+    }
+
+    return properties;
+}
+
+/**
+ * Extract visual style properties
+ * @param {object} obj - Visual object
+ * @returns {object} Style properties
+ */
+function extractStyleProperties(obj) {
+    var style = {};
+
+    // Color properties
+    if (obj.fillColor !== undefined && obj.fillColor !== null) {
+        style.fillColor = obj.fillColor;
+    }
+    if (obj.fontColor !== undefined && obj.fontColor !== null) {
+        style.fontColor = obj.fontColor;
+    }
+    if (obj.lineColor !== undefined && obj.lineColor !== null) {
+        style.lineColor = obj.lineColor;
+    }
+    if (obj.iconColor !== undefined && obj.iconColor !== null) {
+        style.iconColor = obj.iconColor;
+    }
+
+    // Font properties
+    if (obj.font !== undefined && obj.font !== null) {
+        style.font = obj.font;
+    }
+    if (obj.fontSize !== undefined && obj.fontSize !== null) {
+        style.fontSize = obj.fontSize;
+    }
+    if (obj.fontStyle !== undefined && obj.fontStyle !== null) {
+        style.fontStyle = obj.fontStyle;
+    }
+
+    // Alignment and text
+    if (obj.textAlignment !== undefined && obj.textAlignment !== null) {
+        style.textAlignment = obj.textAlignment;
+    }
+    if (obj.textPosition !== undefined && obj.textPosition !== null) {
+        style.textPosition = obj.textPosition;
+    }
+
+    // Opacity and border
+    if (obj.opacity !== undefined && obj.opacity !== null) {
+        style.opacity = obj.opacity;
+    }
+    if (obj.borderType !== undefined && obj.borderType !== null) {
+        style.borderType = obj.borderType;
+    }
+    if (obj.lineWidth !== undefined && obj.lineWidth !== null) {
+        style.lineWidth = obj.lineWidth;
+    }
+
+    // Label expression (for dynamic labels)
+    if (obj.labelExpression !== undefined && obj.labelExpression !== null) {
+        style.labelExpression = obj.labelExpression;
+    }
+
+    // Image properties (for elements with images)
+    if (obj.imageSource !== undefined && obj.imageSource !== null) {
+        style.imageSource = obj.imageSource;
+    }
+    if (obj.imagePosition !== undefined && obj.imagePosition !== null) {
+        style.imagePosition = obj.imagePosition;
+    }
+
+    return style;
+}
+
+/**
+ * Extract bounds (position and size)
+ * @param {object} obj - Visual object
+ * @returns {object|null} Bounds object or null
+ */
+function extractBounds(obj) {
+    if (obj.bounds) {
+        return {
+            x: obj.bounds.x || 0,
+            y: obj.bounds.y || 0,
+            width: obj.bounds.width || 0,
+            height: obj.bounds.height || 0
+        };
+    }
+    return null;
+}
+
+/**
+ * Extract ALL available properties using introspection
+ * This catches any properties we might have missed
+ * @param {object} obj - Any jArchi object
+ * @returns {object} All discovered properties
+ */
+function extractAllAvailableProperties(obj) {
+    var allProps = {};
+
+    // Common properties to check
+    var propertiesToCheck = [
+        "id", "name", "type", "documentation", "content",
+        "fillColor", "fontColor", "lineColor", "iconColor",
+        "font", "fontSize", "fontStyle",
+        "textAlignment", "textPosition",
+        "opacity", "borderType", "lineWidth",
+        "labelExpression", "imageSource", "imagePosition",
+        "specialization", "accessType",
+        "isLocked", "isInfluence",
+        "class", "toString"
+    ];
+
+    for (var i = 0; i < propertiesToCheck.length; i++) {
+        var propName = propertiesToCheck[i];
+        try {
+            var value = obj[propName];
+            if (value !== undefined && value !== null && typeof value !== "function") {
+                allProps[propName] = value;
+            }
+        } catch (e) {
+            // Property doesn't exist or can't be accessed, skip it
+        }
+    }
+
+    return allProps;
+}
+
+// =====================================================
+// Helper Functions
+// =====================================================
+
+/**
+ * Check if a visual object is a relationship
+ * @param {object} visualObj - Visual object to check
+ * @returns {boolean} True if it's a relationship
+ */
+function isRelationship(visualObj) {
+    return visualObj.type && visualObj.type.indexOf("relationship") >= 0;
+}
+
+/**
+ * Find the visual parent of an element
+ * @param {object} visualObj - Visual object
+ * @returns {object|null} Parent object or null
+ */
+function findVisualParent(visualObj) {
+    // First try to find a group parent
+    var parentGroup = $(visualObj).parent("diagram-model-group").first();
+    if (parentGroup) {
+        return parentGroup;
+    }
+
+    // If no group parent, try to find any visual parent (for nested elements)
+    var parentElement = $(visualObj).parent().first();
+    if (parentElement && parentElement.type !== "archimate-diagram-model") {
+        return parentElement;
+    }
+
+    return null;
+}
+
+// =====================================================
+// Sorting by Visual Position
+// =====================================================
+
+/**
+ * Sort elements by their visual position in the view
+ * This function respects hierarchical structure (children stay grouped with parents)
+ * and converts relative positions to absolute coordinates for sorting
+ *
+ * @param {object} viewData - The structure returned by extractCompleteViewStructure()
+ * @param {string} sortOrder - Sort order: "x-then-y" (left-to-right, top-to-bottom)
+ *                              or "y-then-x" (top-to-bottom, left-to-right)
+ *                              Default: "y-then-x"
+ * @returns {array} Sorted array of elements
+ */
+function sortElementsByVisualPosition(viewData, sortOrder) {
+    if (!sortOrder) {
+        sortOrder = "y-then-x";  // Default: top-to-bottom, left-to-right
+    }
+
+    console.log("Sorting elements by visual position (order: " + sortOrder + ")...");
+
+    // Step 1: Calculate absolute positions for all elements
+    var elementsWithAbsolutePos = calculateAbsolutePositions(viewData.elements);
+
+    // Step 2: Build hierarchy map (parent -> children)
+    var hierarchyMap = buildHierarchyMap(elementsWithAbsolutePos);
+
+    // Step 3: Find root elements (no parent)
+    var rootElements = [];
+    for (var i = 0; i < elementsWithAbsolutePos.length; i++) {
+        var elem = elementsWithAbsolutePos[i];
+        if (!elem.visualParentId) {
+            rootElements.push(elem);
+        }
+    }
+
+    // Step 4: Sort root elements by position
+    rootElements.sort(createPositionComparator(sortOrder));
+
+    // Step 5: Recursively sort and flatten hierarchy
+    var sortedElements = [];
+    for (var i = 0; i < rootElements.length; i++) {
+        flattenHierarchy(rootElements[i], hierarchyMap, sortOrder, sortedElements);
+    }
+
+    console.log("Sorted " + sortedElements.length + " elements");
+
+    return sortedElements;
+}
+
+/**
+ * Calculate absolute positions for all elements
+ * (relative positions are converted to absolute by adding parent positions)
+ * @param {array} elements - Array of elements from viewData
+ * @returns {array} Elements with absolutePosition property added
+ */
+function calculateAbsolutePositions(elements) {
+    var elementsMap = {};
+    var result = [];
+
+    // First pass: Create map and initialize
+    for (var i = 0; i < elements.length; i++) {
+        var elem = elements[i];
+        var elemCopy = {
+            original: elem,
+            id: elem.id,
+            visualParentId: elem.visualParentId,
+            bounds: elem.bounds,
+            absolutePosition: null  // Will be calculated
+        };
+        elementsMap[elem.id] = elemCopy;
+        result.push(elemCopy);
+    }
+
+    // Second pass: Calculate absolute positions
+    for (var i = 0; i < result.length; i++) {
+        var elem = result[i];
+        elem.absolutePosition = calculateAbsolutePosition(elem, elementsMap);
+    }
+
+    return result;
+}
+
+/**
+ * Recursively calculate absolute position of an element
+ * @param {object} elem - Element with bounds
+ * @param {object} elementsMap - Map of all elements by ID
+ * @returns {object} Absolute position {x, y}
+ */
+function calculateAbsolutePosition(elem, elementsMap) {
+    if (!elem.bounds) {
+        return { x: 0, y: 0 };
+    }
+
+    var x = elem.bounds.x;
+    var y = elem.bounds.y;
+
+    // Add parent's absolute position if there is a parent
+    if (elem.visualParentId) {
+        var parent = elementsMap[elem.visualParentId];
+        if (parent) {
+            var parentAbsPos = parent.absolutePosition;
+            if (!parentAbsPos) {
+                // Calculate parent's position first (recursive)
+                parentAbsPos = calculateAbsolutePosition(parent, elementsMap);
+                parent.absolutePosition = parentAbsPos;
+            }
+            x += parentAbsPos.x;
+            y += parentAbsPos.y;
+        }
+    }
+
+    return { x: x, y: y };
+}
+
+/**
+ * Build a map of parent -> children relationships
+ * @param {array} elements - Elements with absolute positions
+ * @returns {object} Map of parentId -> array of children
+ */
+function buildHierarchyMap(elements) {
+    var map = {};
+
+    for (var i = 0; i < elements.length; i++) {
+        var elem = elements[i];
+        if (elem.visualParentId) {
+            if (!map[elem.visualParentId]) {
+                map[elem.visualParentId] = [];
+            }
+            map[elem.visualParentId].push(elem);
+        }
+    }
+
+    return map;
+}
+
+/**
+ * Create a comparator function for sorting by position
+ * @param {string} sortOrder - "x-then-y" or "y-then-x"
+ * @returns {function} Comparator function
+ */
+function createPositionComparator(sortOrder) {
+    return function(a, b) {
+        var posA = a.absolutePosition || { x: 0, y: 0 };
+        var posB = b.absolutePosition || { x: 0, y: 0 };
+
+        if (sortOrder === "x-then-y") {
+            // Left-to-right, then top-to-bottom
+            if (posA.x !== posB.x) {
+                return posA.x - posB.x;
+            }
+            return posA.y - posB.y;
+        } else {
+            // Default: "y-then-x" - Top-to-bottom, then left-to-right
+            if (posA.y !== posB.y) {
+                return posA.y - posB.y;
+            }
+            return posA.x - posB.x;
+        }
+    };
+}
+
+/**
+ * Recursively flatten hierarchy (depth-first) while maintaining sort order
+ * @param {object} elem - Current element
+ * @param {object} hierarchyMap - Map of parent -> children
+ * @param {string} sortOrder - Sort order
+ * @param {array} result - Accumulator for sorted elements
+ */
+function flattenHierarchy(elem, hierarchyMap, sortOrder, result) {
+    // Add current element
+    result.push(elem.original);
+
+    // Get children and sort them
+    var children = hierarchyMap[elem.id];
+    if (children && children.length > 0) {
+        children.sort(createPositionComparator(sortOrder));
+
+        // Recursively process each child
+        for (var i = 0; i < children.length; i++) {
+            flattenHierarchy(children[i], hierarchyMap, sortOrder, result);
+        }
+    }
+}
+
+// =====================================================
+// Deduplication
+// =====================================================
+
+/**
+ * Deduplicate view data by removing duplicate element and relationship occurrences
+ * When the same ArchiMate element or relationship appears multiple times visually,
+ * only the first occurrence is kept in the result.
+ *
+ * @param {object} viewData - The structure returned by extractCompleteViewStructure()
+ * @returns {object} Deduplicated structure with same format as input
+ */
+function deduplicateViewData(viewData) {
+    console.log("Deduplicating view data...");
+
+    var result = {
+        view: viewData.view,  // View metadata unchanged
+        elements: [],
+        relationships: [],
+        visualContainment: []
+    };
+
+    // Track which concepts we've already included
+    var seenElementConcepts = {};
+    var seenRelationshipConcepts = {};
+
+    // Map old element IDs to new deduplicated elements for updating references
+    var elementIdMap = {};
+
+    // Deduplicate elements
+    for (var i = 0; i < viewData.elements.length; i++) {
+        var elem = viewData.elements[i];
+
+        // Determine unique key (concept.id for ArchiMate elements, visual id for others)
+        var key = elem.concept ? elem.concept.id : elem.id;
+
+        if (!seenElementConcepts[key]) {
+            seenElementConcepts[key] = true;
+            result.elements.push(elem);
+            elementIdMap[elem.id] = elem;
+        } else {
+            // Map this duplicate's ID to the first occurrence
+            var firstOccurrence = null;
+            for (var j = 0; j < result.elements.length; j++) {
+                var existingElem = result.elements[j];
+                var existingKey = existingElem.concept ? existingElem.concept.id : existingElem.id;
+                if (existingKey === key) {
+                    firstOccurrence = existingElem;
+                    break;
+                }
+            }
+            if (firstOccurrence) {
+                elementIdMap[elem.id] = firstOccurrence;
+            }
+        }
+    }
+
+    console.log("  Elements: " + viewData.elements.length + " -> " + result.elements.length);
+
+    // Deduplicate relationships
+    for (var i = 0; i < viewData.relationships.length; i++) {
+        var rel = viewData.relationships[i];
+
+        // Determine unique key (concept.id for ArchiMate relationships, visual id for others)
+        var key = rel.concept ? rel.concept.id : rel.id;
+
+        if (!seenRelationshipConcepts[key]) {
+            seenRelationshipConcepts[key] = true;
+
+            // Update source/target references to point to deduplicated elements
+            var updatedRel = {
+                id: rel.id,
+                type: rel.type,
+                name: rel.name,
+                documentation: rel.documentation,
+                sourceId: rel.sourceId,
+                targetId: rel.targetId,
+                source: elementIdMap[rel.sourceId] || rel.source,
+                target: elementIdMap[rel.targetId] || rel.target,
+                style: rel.style,
+                properties: rel.properties,
+                concept: rel.concept,
+                allProperties: rel.allProperties
+            };
+
+            result.relationships.push(updatedRel);
+        }
+    }
+
+    console.log("  Relationships: " + viewData.relationships.length + " -> " + result.relationships.length);
+
+    // Rebuild visual containment based on deduplicated elements
+    var deduplicatedElementIds = {};
+    for (var i = 0; i < result.elements.length; i++) {
+        deduplicatedElementIds[result.elements[i].id] = true;
+    }
+
+    for (var i = 0; i < viewData.visualContainment.length; i++) {
+        var cont = viewData.visualContainment[i];
+
+        // Only include containment if both parent and child are in deduplicated set
+        if (deduplicatedElementIds[cont.source] && deduplicatedElementIds[cont.target]) {
+            // Update references to point to deduplicated elements
+            result.visualContainment.push({
+                type: cont.type,
+                source: cont.source,
+                target: cont.target,
+                sourceElement: elementIdMap[cont.source] || cont.sourceElement,
+                targetElement: elementIdMap[cont.target] || cont.targetElement
+            });
+        }
+    }
+
+    console.log("  Visual Containments: " + viewData.visualContainment.length + " -> " + result.visualContainment.length);
+    console.log("Deduplication complete");
+
+    return result;
+}
