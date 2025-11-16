@@ -1,0 +1,419 @@
+/**
+ * Jinja Template Renderer for jArchi
+ * Renders AST with context data
+ */
+
+// Load dependencies
+load(__DIR__ + "jinjaFilters.ajs");
+load(__DIR__ + "jinjaTests.ajs");
+
+/**
+ * Render AST with context
+ * @param {Object} ast - AST from parser
+ * @param {Object} context - Data context
+ * @returns {string} Rendered output
+ */
+function render(ast, context) {
+    return renderNode(ast, context);
+}
+
+/**
+ * Render a single AST node
+ * @param {Object} node - AST node
+ * @param {Object} context - Current context
+ * @returns {string} Rendered output
+ */
+function renderNode(node, context) {
+    switch (node.type) {
+        case "ROOT":
+            return renderChildren(node.children, context);
+
+        case "TEXT":
+            return node.value;
+
+        case "VAR":
+            var result = evaluateExpression(node.expression, context);
+            var output = String(result !== null && result !== undefined ? result : "");
+
+            // Apply whitespace control
+            if (node.stripBefore || node.stripAfter) {
+                // Whitespace control is handled at the parent level
+            }
+
+            return output;
+
+        case "FOR":
+            return renderFor(node, context);
+
+        case "IF":
+            return renderIf(node, context);
+
+        default:
+            console.log("[WARNING] Unknown node type: " + node.type);
+            return "";
+    }
+}
+
+/**
+ * Render multiple child nodes
+ * @param {Array} children - Array of child nodes
+ * @param {Object} context - Current context
+ * @returns {string} Rendered output
+ */
+function renderChildren(children, context) {
+    var output = "";
+
+    for (var i = 0; i < children.length; i++) {
+        var child = children[i];
+        var childOutput = renderNode(child, context);
+
+        // Handle whitespace stripping
+        if (child.type === "VAR" || child.type === "FOR" || child.type === "IF") {
+            // Check if we need to strip whitespace before
+            if (child.stripBefore && output.length > 0) {
+                output = output.replace(/\s+$/, "");
+            }
+
+            output += childOutput;
+
+            // Check if we need to strip whitespace after
+            if (child.stripAfter && i + 1 < children.length) {
+                var nextChild = children[i + 1];
+                if (nextChild.type === "TEXT") {
+                    nextChild.value = nextChild.value.replace(/^\s+/, "");
+                }
+            }
+        } else {
+            output += childOutput;
+        }
+    }
+
+    return output;
+}
+
+/**
+ * Render a for loop
+ * @param {Object} node - FOR node
+ * @param {Object} context - Current context
+ * @returns {string} Rendered output
+ */
+function renderFor(node, context) {
+    var iterable = evaluateExpression(node.iterable, context);
+    var items = [];
+
+    // Handle arrays
+    if (Array.isArray(iterable)) {
+        items = iterable;
+    }
+    // Handle objects - iterate over keys
+    else if (typeof iterable === "object" && iterable !== null) {
+        for (var key in iterable) {
+            if (iterable.hasOwnProperty(key)) {
+                items.push(key);
+            }
+        }
+    }
+    // Not iterable
+    else {
+        console.log("[WARNING] for loop iterable is not an array or object: " + typeof iterable);
+        return "";
+    }
+
+    var output = "";
+
+    for (var i = 0; i < items.length; i++) {
+        // Create new context with loop variable and loop metadata
+        var loopContext = createChildContext(context);
+        loopContext[node.loopVar] = items[i];
+        loopContext.loop = {
+            index: i + 1,
+            index0: i,
+            first: i === 0,
+            last: i === items.length - 1,
+            length: items.length
+        };
+
+        var iterationOutput = renderChildren(node.body, loopContext);
+
+        // Apply whitespace stripping for loop body
+        if (node.stripAfter && iterationOutput.length > 0) {
+            iterationOutput = iterationOutput.replace(/\s+$/, "");
+        }
+
+        output += iterationOutput;
+    }
+
+    return output;
+}
+
+/**
+ * Render an if/elif/else block
+ * @param {Object} node - IF node
+ * @param {Object} context - Current context
+ * @returns {string} Rendered output
+ */
+function renderIf(node, context) {
+    var output = "";
+
+    for (var i = 0; i < node.branches.length; i++) {
+        var branch = node.branches[i];
+
+        // else branch has null condition
+        if (branch.condition === null) {
+            output = renderChildren(branch.body, context);
+            break;
+        }
+
+        var conditionResult = evaluateExpression(branch.condition, context);
+
+        if (isTruthy(conditionResult)) {
+            output = renderChildren(branch.body, context);
+            break;
+        }
+    }
+
+    // Apply whitespace stripping if requested
+    if (node.stripAfter && output.length > 0) {
+        output = output.replace(/\s+$/, "");
+    }
+
+    return output;
+}
+
+/**
+ * Evaluate an expression to a value
+ * @param {Object} expr - Expression AST node
+ * @param {Object} context - Current context
+ * @returns {*} Evaluated value
+ */
+function evaluateExpression(expr, context) {
+    switch (expr.type) {
+        case "LITERAL":
+            return expr.value;
+
+        case "MEMBER":
+            return resolveMember(expr.path, context);
+
+        case "INDEX":
+            return evaluateIndex(expr, context);
+
+        case "BINARY_OP":
+            return evaluateBinaryOp(expr, context);
+
+        case "UNARY_OP":
+            return evaluateUnaryOp(expr, context);
+
+        case "FILTER":
+            return evaluateFilter(expr, context);
+
+        case "TEST":
+            return evaluateTest(expr, context);
+
+        default:
+            console.log("[WARNING] Unknown expression type: " + expr.type);
+            return null;
+    }
+}
+
+/**
+ * Resolve a member path (e.g., element.properties.Statut)
+ * @param {Array} path - Path segments
+ * @param {Object} context - Current context
+ * @returns {*} Resolved value or null if not found
+ */
+function resolveMember(path, context) {
+    var current = context;
+
+    for (var i = 0; i < path.length; i++) {
+        var segment = path[i];
+
+        if (current === null || current === undefined) {
+            console.log("[WARNING] Cannot access property '" + segment + "' of null/undefined (path: " + path.join(".") + ")");
+            return null;
+        }
+
+        if (typeof current === "object" && segment in current) {
+            current = current[segment];
+        } else {
+            console.log("[WARNING] Variable not found: " + path.join("."));
+            return null;
+        }
+    }
+
+    return current;
+}
+
+/**
+ * Evaluate index access (e.g., element.properties[key])
+ * @param {Object} expr - INDEX expression
+ * @param {Object} context - Current context
+ * @returns {*} Indexed value or null if not found
+ */
+function evaluateIndex(expr, context) {
+    var obj = evaluateExpression(expr.object, context);
+    var index = evaluateExpression(expr.index, context);
+
+    if (obj === null || obj === undefined) {
+        console.log("[WARNING] Cannot access index of null/undefined");
+        return null;
+    }
+
+    if (typeof obj === "object" && index in obj) {
+        return obj[index];
+    } else if (Array.isArray(obj) && typeof index === "number") {
+        if (index >= 0 && index < obj.length) {
+            return obj[index];
+        } else {
+            console.log("[WARNING] Array index out of bounds: " + index);
+            return null;
+        }
+    } else {
+        console.log("[WARNING] Cannot access index '" + index + "' of object");
+        return null;
+    }
+}
+
+/**
+ * Evaluate a binary operation
+ * @param {Object} expr - BINARY_OP expression
+ * @param {Object} context - Current context
+ * @returns {*} Result
+ */
+function evaluateBinaryOp(expr, context) {
+    var left = evaluateExpression(expr.left, context);
+    var right = evaluateExpression(expr.right, context);
+
+    switch (expr.operator) {
+        case "==":
+            return left == right;
+        case "!=":
+            return left != right;
+        case "<":
+            return left < right;
+        case ">":
+            return left > right;
+        case "<=":
+            return left <= right;
+        case ">=":
+            return left >= right;
+        case "and":
+            return isTruthy(left) && isTruthy(right);
+        case "or":
+            return isTruthy(left) || isTruthy(right);
+        case "in":
+            return isIn(left, right);
+        default:
+            console.log("[WARNING] Unknown operator: " + expr.operator);
+            return null;
+    }
+}
+
+/**
+ * Evaluate a unary operation
+ * @param {Object} expr - UNARY_OP expression
+ * @param {Object} context - Current context
+ * @returns {*} Result
+ */
+function evaluateUnaryOp(expr, context) {
+    var operand = evaluateExpression(expr.operand, context);
+
+    switch (expr.operator) {
+        case "not":
+            return !isTruthy(operand);
+        default:
+            console.log("[WARNING] Unknown unary operator: " + expr.operator);
+            return null;
+    }
+}
+
+/**
+ * Evaluate a filter
+ * @param {Object} expr - FILTER expression
+ * @param {Object} context - Current context
+ * @returns {*} Filtered value
+ */
+function evaluateFilter(expr, context) {
+    var value = evaluateExpression(expr.value, context);
+    var args = [];
+
+    for (var i = 0; i < expr.args.length; i++) {
+        args.push(evaluateExpression(expr.args[i], context));
+    }
+
+    return applyFilter(value, expr.filterName, args);
+}
+
+/**
+ * Evaluate a test
+ * @param {Object} expr - TEST expression
+ * @param {Object} context - Current context
+ * @returns {boolean} Test result
+ */
+function evaluateTest(expr, context) {
+    var value = evaluateExpression(expr.value, context);
+    var result = applyTest(value, expr.testName);
+
+    return expr.negate ? !result : result;
+}
+
+/**
+ * Check if value is truthy
+ * @param {*} value - Value to check
+ * @returns {boolean} True if truthy
+ */
+function isTruthy(value) {
+    if (value === null || value === undefined || value === false) {
+        return false;
+    }
+
+    if (value === 0 || value === "") {
+        return false;
+    }
+
+    if (Array.isArray(value) && value.length === 0) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Check if needle is in haystack
+ * @param {*} needle - Value to find
+ * @param {*} haystack - Array or string to search
+ * @returns {boolean} True if found
+ */
+function isIn(needle, haystack) {
+    if (typeof haystack === "string") {
+        return haystack.indexOf(String(needle)) !== -1;
+    }
+
+    if (Array.isArray(haystack)) {
+        for (var i = 0; i < haystack.length; i++) {
+            if (haystack[i] === needle) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    return false;
+}
+
+/**
+ * Create a child context (for loops and scopes)
+ * @param {Object} parent - Parent context
+ * @returns {Object} New context with parent as prototype
+ */
+function createChildContext(parent) {
+    var child = {};
+
+    // Copy parent properties (shallow copy)
+    for (var key in parent) {
+        if (parent.hasOwnProperty(key)) {
+            child[key] = parent[key];
+        }
+    }
+
+    return child;
+}

@@ -1,35 +1,61 @@
+# {{ view.name }}
+![Diagramme - {{ view.name }}]({{ viewImagePath }})
+
 ---
-title: "Capacity Overview Details"
+
+{% for element in elements -%}
+{% if element.isGroup and element.name != "Légende" and element.name != "" -%}
+## {{ element.name }}
+
+{% if element.documentation -%}
+{{ element.documentation }}
+
+{% endif -%}
+
 ---
 
-# {{view.name}}
+{% if element.visualChildren|length > 0 -%}
+{% for child in element.visualChildren -%}
+### {{ child.name }}
 
-{{view.image.png}}
+{% if child.documentation -%}
+{{ child.documentation }}
 
-{{#each groups where name != "Légende" AND name != ""}}
-## {{group.name}}
+{% endif -%}
+{% if child.visualChildren|length > 0 -%}
+{% for nestedChild in child.visualChildren -%}
+#### {{ nestedChild.name }}
 
-{{#each group.children}}
-### {{child.name}}
+{% if nestedChild.documentation -%}
+{{ nestedChild.documentation }}
 
-{{child.documentation}}
-
-{{#each child.children}}
-
-#### {{nestedChild.name}}
-
-{{nestedChild.documentation}}
-
-**Propriétés :**
+{% endif -%}
+{% if nestedChild.properties -%}
 
 | Propriété | Valeur |
-|-|-|
-{{#each nestedChild.propertiesArray}}
-| {{property.key}} | {{property.value}} |
-{{/each nestedChild.propertiesArray}}
+|-----------|--------|
+{%- if nestedChild.properties["ID"] is defined -%}
+| ID | {{ nestedChild.properties["Type"]|escape }}-{{ nestedChild.properties["Couche"]|escape }}-{{ nestedChild.properties["Domaine"]|escape }}-{{ nestedChild.properties["ID"]|escape }} |
+{% endif -%}
+{%- if nestedChild.properties["Transversalité du besoin"] is defined -%}
+| Transversabilité | {{ nestedChild.properties["Transversalité du besoin"]|escape }} |
+{% endif -%}
+{%- if nestedChild.properties["Complexité business logic"] is defined -%}
+| Complexité métier | {{ nestedChild.properties["Complexité business logic"]|escape }} |
+{% endif -%}
+{%- if nestedChild.properties["Criticité business"] is defined -%}
+| Criticité métier | {{ nestedChild.properties["Criticité business"]|escape }} |
+{% endif -%}
+{%- if nestedChild.properties["Niveau d'exigence de compliance"] is defined -%}
+| Conformité | {{ nestedChild.properties["Niveau d'exigence de compliance"]|escape }} |
+{% endif -%}
 
-{{/each child.children}}
+{% endif -%}
+{% endfor -%}
+{% endif -%}
 
-{{/each group.children}}
-{{/each groups}}
+{% endfor -%}
+{% endif -%}
 
+{% endif -%}
+{% endfor -%}

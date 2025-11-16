@@ -1,332 +1,310 @@
-/*
- * Extract Markdown Documentation
+/**
+ * Extract Archi View to Markdown using Jinja-like Templates
  *
- * Generic template-based documentation generator for ArchiMate views
+ * This script extracts data from an ArchiMate view and renders it to Markdown
+ * using a Jinja-inspired template engine.
  *
- * Generates:
- * - A Markdown file based on the selected template
- * - A PNG image of the view
+ * Usage:
+ *   load(__DIR__ + "Tools/extractMD/extractMD.ajs");
  *
- * Version 2.0 - Rewritten with generic template engine
+ *   var view = $("view").first();
+ *   var outputDir = "C:/path/to/output";
+ *   var templatePath = __DIR__ + "Tools/extractMD/examples/simple_view.md";
+ *
+ *   var result = extractViewToMarkdown(view, outputDir, templatePath);
+ *
+ * Template syntax:
+ * - Variables: {{ variable }}
+ * - Loops: {% for item in items %}...{% endfor %}
+ * - Conditionals: {% if condition %}...{% elif %}...{% else %}...{% endif %}
+ * - Filters: {{ variable|filter }}
+ * - Tests: {% if variable is test %}
+ * - Comments: {# comment #}
+ * - Whitespace control: {%-, -%}
  */
 
-// Load libraries
-load(__DIR__ + "lib\\templateEngine.ajs");
-load(__DIR__ + "lib\\dataExtractor.ajs");
+// Load dependencies
+load(__DIR__ + "lib/jinjaParser.ajs");
+load(__DIR__ + "lib/jinjaRenderer.ajs");
+load(__DIR__ + "../../library/viewExtractor.ajs");
 
-console.clear();
-console.show();
-
-// =====================================================
-// Helper Functions
-// =====================================================
+// Java types for file I/O
+var File = Java.type("java.io.File");
+var FileWriter = Java.type("java.io.FileWriter");
+var BufferedWriter = Java.type("java.io.BufferedWriter");
+var FileReader = Java.type("java.io.FileReader");
+var BufferedReader = Java.type("java.io.BufferedReader");
+var FileOutputStream = Java.type("java.io.FileOutputStream");
+var Base64 = Java.type("java.util.Base64");
 
 /**
- * Sanitize a filename by removing/replacing invalid characters
+ * Sanitize filename by removing/replacing special characters
+ * @param {string} name - Original filename
+ * @returns {string} Sanitized filename
  */
-function sanitizeFilename(name) {
-    return name.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '-');
-}
+function sanitizeFileName(name) {
+    // Replace accents with base letters
+    var accentMap = {
+        'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
+        'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+        'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+        'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+        'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
+        'ý': 'y', 'ÿ': 'y',
+        'ñ': 'n', 'ç': 'c',
+        'À': 'A', 'Á': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A', 'Å': 'A',
+        'È': 'E', 'É': 'E', 'Ê': 'E', 'Ë': 'E',
+        'Ì': 'I', 'Í': 'I', 'Î': 'I', 'Ï': 'I',
+        'Ò': 'O', 'Ó': 'O', 'Ô': 'O', 'Õ': 'O', 'Ö': 'O',
+        'Ù': 'U', 'Ú': 'U', 'Û': 'U', 'Ü': 'U',
+        'Ý': 'Y', 'Ÿ': 'Y',
+        'Ñ': 'N', 'Ç': 'C'
+    };
 
-/**
- * Discover all available templates in the specified templates directory
- * @param {string} templatesDirPath - Path to the templates directory
- * @returns {Array} Array of template file objects {filename, displayName}
- */
-function discoverTemplates(templatesDirPath) {
-    var templates = [];
-    var imports = new JavaImporter(java.io);
-
-    with (imports) {
-        var templatesDir = new File(templatesDirPath);
-
-        if (!templatesDir.exists() || !templatesDir.isDirectory()) {
-            console.error("ERROR: Templates directory not found: " + templatesDir.getPath());
-            return templates;
-        }
-
-        var files = templatesDir.listFiles();
-
-        if (files != null) {
-            for (var i = 0; i < files.length; i++) {
-                var file = files[i];
-                var fileName = file.getName();
-
-                // Match pattern: *.md
-                if (fileName.endsWith(".md")) {
-                    var displayName = getTemplateDisplayName(templatesDirPath, fileName);
-                    templates.push({
-                        filename: fileName,
-                        displayName: displayName
-                    });
-                }
-            }
+    var result = "";
+    for (var i = 0; i < name.length; i++) {
+        var char = name.charAt(i);
+        if (accentMap[char]) {
+            result += accentMap[char];
+        } else {
+            result += char;
         }
     }
 
-    return templates;
+    // Replace spaces with underscores
+    result = result.replace(/ /g, "_");
+
+    // Remove invalid characters for filenames (keep - _ . ( ) and alphanumeric)
+    result = result.replace(/[^a-zA-Z0-9_\-\.\(\)]/g, "_");
+
+    // Remove multiple consecutive underscores
+    result = result.replace(/_+/g, "_");
+
+    // Remove leading/trailing underscores
+    result = result.replace(/^_+|_+$/g, "");
+
+    return result;
 }
 
 /**
- * Extract a readable name from template filename or YAML front matter
- * @param {string} templatesDirPath - Path to templates directory
- * @param {string} filename - Template filename
- * @returns {string} Human-readable template name
+ * Extract ArchiMate view to Markdown using template
+ * @param {object} view - ArchiMate view (jArchi object)
+ * @param {string} outputDir - Directory for output files (absolute path)
+ * @param {string} templatePath - Path to template file (absolute path)
+ * @returns {object} Result object with paths and status
  */
-function getTemplateDisplayName(templatesDirPath, filename) {
-    // Try to read YAML front matter title
-    var templatePath = templatesDirPath + (templatesDirPath.endsWith("\\") || templatesDirPath.endsWith("/") ? "" : "\\") + filename;
-    var title = extractYAMLTitle(templatePath);
+function extractViewToMarkdown(view, outputDir, templatePath) {
+    console.clear();
+    console.show();
 
-    if (title) {
-        return title;
-    }
-
-    // Fallback: extract from filename
-    var name = filename.replace(".md", "");
-
-    // Remove common prefixes
-    name = name.replace(/^extract_view_/, "");
-    name = name.replace(/_template$/, "");
-
-    // Replace underscores with spaces and capitalize
-    name = name.replace(/_/g, " ");
-
-    return name;
-}
-
-/**
- * Extract the title from YAML front matter
- * @param {string} filePath - Path to the template file
- * @returns {string|null} Title from YAML front matter, or null if not found
- */
-function extractYAMLTitle(filePath) {
     try {
-        var content = readTemplateFile(filePath);
-
-        // Check if file starts with YAML front matter (---)
-        if (!content.startsWith("---")) {
-            return null;
+        // Validation
+        if (!view) {
+            throw new Error("View parameter is required");
         }
 
-        // Find the closing --- of the front matter
-        var secondDelimiter = content.indexOf("\n---", 3);
-        if (secondDelimiter === -1) {
-            return null;
+        if (!view.name) {
+            throw new Error("View must have a name");
         }
 
-        // Extract YAML content (between the two ---)
-        var yamlContent = content.substring(4, secondDelimiter);
-
-        // Parse title field (simple regex for title: "value" or title: value)
-        var titleMatch = yamlContent.match(/title:\s*["']?([^"'\n]+)["']?/);
-
-        if (titleMatch && titleMatch[1]) {
-            return titleMatch[1].trim();
+        if (!outputDir) {
+            throw new Error("Output directory parameter is required");
         }
 
-        return null;
+        if (!templatePath) {
+            throw new Error("Template path parameter is required");
+        }
+
+        // Check template file exists
+        var templateFile = new File(templatePath);
+        if (!templateFile.exists()) {
+            throw new Error("Template file not found: " + templatePath);
+        }
+
+        // Check/create output directory
+        var outputDirFile = new File(outputDir);
+        if (!outputDirFile.exists()) {
+            outputDirFile.mkdirs();
+        }
+
+        if (!outputDirFile.isDirectory()) {
+            throw new Error("Output path is not a directory: " + outputDir);
+        }
+
+        console.log("=".repeat(50));
+        console.log("Extract View to Markdown");
+        console.log("=".repeat(50));
+        console.log("View: " + view.name);
+        console.log("Template: " + templatePath);
+        console.log("Output Directory: " + outputDir);
+        console.log("");
+
+        // Generate output filenames
+        var sanitizedName = sanitizeFileName(view.name);
+        var mdFileName = sanitizedName + ".md";
+        var pngFileName = sanitizedName + ".png";
+
+        var mdPath = new File(outputDirFile, mdFileName).getAbsolutePath();
+        var pngPath = new File(outputDirFile, pngFileName).getAbsolutePath();
+
+        console.log("Output files:");
+        console.log("  MD: " + mdFileName);
+        console.log("  PNG: " + pngFileName);
+        console.log("");
+
+        // Extract view data
+        console.log("Extracting view data...");
+        var viewData = extractCompleteViewStructure(view);
+
+        // Add image path to context (relative path for markdown)
+        viewData.viewImagePath = pngFileName;
+
+        console.log("Extracted " + viewData.elements.length + " elements, " +
+                    viewData.relationships.length + " relationships");
+
+        // Read template
+        console.log("Reading template...");
+        var templateContent = readFile(templatePath);
+
+        // Parse template
+        console.log("Parsing template...");
+        var tokens = tokenize(templateContent);
+        var ast = parse(tokens);
+
+        // Render template
+        console.log("Rendering template...");
+        var rendered = render(ast, viewData);
+
+        // Export view image
+        console.log("Exporting view image...");
+        exportViewImage(view, pngPath);
+
+        // Write output
+        console.log("Writing output file...");
+        writeFile(mdPath, rendered);
+
+        var lineCount = (rendered.match(/\n/g) || []).length + 1;
+
+        console.log("");
+        console.log("=".repeat(50));
+        console.log("SUCCESS!");
+        console.log("=".repeat(50));
+        console.log("Markdown file: " + mdPath);
+        console.log("Image file: " + pngPath);
+        console.log("Lines rendered: " + lineCount);
+        console.log("=".repeat(50));
+
+        return {
+            success: true,
+            markdownPath: mdPath,
+            imagePath: pngPath,
+            lineCount: lineCount
+        };
+
     } catch (e) {
-        console.log("Warning: Could not read YAML front matter from " + filePath + ": " + e);
-        return null;
+        console.error("=".repeat(50));
+        console.error("ERROR!");
+        console.error("=".repeat(50));
+        console.error(e.message);
+        console.error("");
+        if (e.stack) {
+            console.error("Stack trace:");
+            console.error(e.stack);
+        }
+        console.error("=".repeat(50));
+
+        return {
+            success: false,
+            error: e.message,
+            stack: e.stack
+        };
     }
+}
+
+/**
+ * Read a text file
+ * @param {string} filePath - Absolute path to file
+ * @returns {string} File contents
+ */
+function readFile(filePath) {
+    var file = new File(filePath);
+
+    if (!file.exists()) {
+        throw new Error("File not found: " + filePath);
+    }
+
+    var reader = new BufferedReader(new FileReader(file));
+    var content = "";
+    var line;
+
+    while ((line = reader.readLine()) !== null) {
+        content += line + "\n";
+    }
+
+    reader.close();
+
+    return content;
+}
+
+/**
+ * Write a text file
+ * @param {string} filePath - Absolute path to file
+ * @param {string} content - Content to write
+ */
+function writeFile(filePath, content) {
+    var file = new File(filePath);
+    var writer = new BufferedWriter(new FileWriter(file));
+
+    writer.write(content);
+    writer.close();
 }
 
 /**
  * Export view as PNG image
- * @param {object} view - The ArchiMate view
- * @param {string} outputPath - Path where to save the PNG
- * @returns {string} Filename of the generated image
+ * @param {object} view - ArchiMate view
+ * @param {string} outputPath - Absolute path to output PNG file
  */
 function exportViewImage(view, outputPath) {
-    console.log("Exporting view image...");
+    try {
+        // Use jArchi API to render view as base64 PNG
+        var base64Image = $.model.renderViewAsBase64(view, "PNG", {
+            scale: 2,
+            margin: 10
+        });
 
-    var viewFilename = sanitizeFilename(view.name);
-    var pngFilename = viewFilename + ".png";
-    var pngPath = outputPath + pngFilename;
+        // Decode base64 and write to file
+        var decoder = Base64.getDecoder();
+        var imageBytes = decoder.decode(base64Image);
 
-    // Render view as PNG (base64 encoded)
-    var pngOptions = {
-        scale: 2,
-        margin: 10
-    };
-    var pngBytes = $.model.renderViewAsBase64(view, "PNG", pngOptions);
+        var fos = new FileOutputStream(outputPath);
+        fos.write(imageBytes);
+        fos.close();
 
-    // Save PNG file
-    $.fs.writeFile(pngPath, pngBytes, "BASE64");
+    } catch (e) {
+        // Fallback: try alternative export method
+        console.log("[WARNING] Primary export failed, trying alternative method...");
 
-    console.log("  Image saved: " + pngFilename);
+        // Create a bytes output stream
+        var ByteArrayOutputStream = Java.type("java.io.ByteArrayOutputStream");
+        var baos = new ByteArrayOutputStream();
 
-    return pngFilename;
+        // Try direct export
+        view.renderTo(baos, "PNG", 2);
+
+        // Write to file
+        var fos = new FileOutputStream(outputPath);
+        fos.write(baos.toByteArray());
+        fos.close();
+    }
 }
 
-// =====================================================
-// Main Function - Encapsulated for caller scripts
-// =====================================================
-
-/**
- * Main extraction function - can be called from client-specific scripts
- * @param {string} templatesDirPath - Path to the directory containing templates
- * @param {string} outputDir - Optional output directory (defaults to __DIR__)
- */
-function extractMD(templatesDirPath, outputDir) {
-    console.log("=== Extract Markdown Documentation ===");
-    console.log("");
-
-    // Default output directory
-    if (!outputDir) {
-        outputDir = __DIR__;
-    }
-
-    // Validate selection
-    var theView = $(selection).filter("archimate-diagram-model").first();
-    if (!theView) {
-        window.alert("Veuillez d'abord sélectionner une vue ArchiMate.");
-        console.error("ERROR: No view selected");
-        exit();
-    }
-
-    console.log("Vue sélectionnée: " + theView.name);
-    console.log("");
-
-    // =====================================================
-    // Discover and Select Template
-    // =====================================================
-
-    console.log("Recherche des templates disponibles...");
-    console.log("Répertoire: " + templatesDirPath);
-    var templates = discoverTemplates(templatesDirPath);
-
-    if (templates.length === 0) {
-        window.alert("Aucun template trouvé!\n\nVeuillez placer au moins un fichier .md dans:\n" + templatesDirPath);
-        console.error("ERROR: No templates found");
-        exit();
-    }
-
-    console.log("Templates trouvés: " + templates.length);
-    for (var i = 0; i < templates.length; i++) {
-        console.log("  - " + templates[i].displayName + " (" + templates[i].filename + ")");
-    }
-    console.log("");
-
-    // Present selection dialog to user
-    var templateNames = [];
-    for (var i = 0; i < templates.length; i++) {
-        templateNames.push(templates[i].displayName);
-    }
-
-    var selectedName = window.promptSelection("Sélectionnez le template à utiliser:", templateNames);
-
-    if (selectedName === null || selectedName === undefined || selectedName === "") {
-        console.log("Template selection cancelled by user");
-        exit();
-    }
-
-    // Find the selected template
-    var selectedTemplate = null;
-    for (var i = 0; i < templates.length; i++) {
-        if (templates[i].displayName === selectedName.toString()) {
-            selectedTemplate = templates[i];
-            break;
+// String.repeat polyfill for Nashorn
+if (!String.prototype.repeat) {
+    String.prototype.repeat = function(count) {
+        var result = "";
+        for (var i = 0; i < count; i++) {
+            result += this;
         }
-    }
-
-    if (selectedTemplate === null) {
-        console.error("ERROR: Could not find template: " + selectedName);
-        exit();
-    }
-
-    console.log("Template sélectionné: " + selectedTemplate.displayName);
-    console.log("");
-
-    // =====================================================
-    // Load Template
-    // =====================================================
-
-    var templatePath = templatesDirPath + (templatesDirPath.endsWith("\\") || templatesDirPath.endsWith("/") ? "" : "\\") + selectedTemplate.filename;
-    console.log("Chargement du template: " + templatePath);
-
-    var templateContent = readTemplateFile(templatePath);
-
-    console.log("  Template chargé: " + templateContent.length + " caractères");
-    console.log("");
-
-    // =====================================================
-    // Extract Data from View
-    // =====================================================
-
-    var data = extractViewData(theView);
-    console.log("");
-
-    // =====================================================
-    // Export View Image
-    // =====================================================
-
-    var imageFilename = exportViewImage(theView, outputDir);
-
-    // Add image filename to data
-    data.imageFilename = imageFilename;
-
-    console.log("");
-
-    // =====================================================
-    // Process Template
-    // =====================================================
-
-    var markdown = processTemplate(templateContent, data);
-
-    console.log("");
-
-    // =====================================================
-    // Save Markdown File
-    // =====================================================
-
-    var viewFilename = sanitizeFilename(theView.name);
-    var mdFilename = viewFilename + ".md";
-    var mdPath = outputDir + (outputDir.endsWith("\\") || outputDir.endsWith("/") ? "" : "\\") + mdFilename;
-
-    $.fs.writeFile(mdPath, markdown);
-
-    console.log("Fichier Markdown sauvegardé: " + mdFilename);
-    console.log("");
-
-    // =====================================================
-    // Success
-    // =====================================================
-
-    console.log("=== Documentation générée avec succès ===");
-    console.log("Fichiers créés:");
-    console.log("  - " + mdFilename);
-    console.log("  - " + imageFilename);
-
-    // Show success message
-    window.alert("Documentation générée avec succès!\n\nFichiers créés:\n- " + mdFilename + "\n- " + imageFilename);
-}
-
-// =====================================================
-// Main Script - Direct execution only
-// =====================================================
-
-// Only execute if this script is run directly (not loaded as a library)
-// When loaded via load(), __CALLER_SCRIPT__ will be defined by the caller
-if (typeof __CALLER_SCRIPT__ === "undefined") {
-    // Check if templates directory exists locally (old structure)
-    var localTemplatesDir = __DIR__ + "templates\\";
-    var imports = new JavaImporter(java.io);
-    var hasLocalTemplates = false;
-
-    with (imports) {
-        var dir = new File(localTemplatesDir);
-        hasLocalTemplates = dir.exists() && dir.isDirectory();
-    }
-
-    if (hasLocalTemplates) {
-        console.log("WARNING: Using deprecated local templates directory.");
-        console.log("Consider creating a client-specific caller script instead.");
-        console.log("");
-        extractMD(localTemplatesDir);
-    } else {
-        window.alert("Ce script doit être appelé par un script client-spécifique.\n\nExemple:\nz_SITEL/extractMD/extractMD_SITEL.ajs");
-        console.error("ERROR: No templates directory found. Use a client-specific caller script.");
-    }
+        return result;
+    };
 }

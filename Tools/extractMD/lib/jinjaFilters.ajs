@@ -1,0 +1,241 @@
+/**
+ * Jinja Template Filters for jArchi
+ * Implements all required filters for template rendering
+ */
+
+/**
+ * Apply a filter to a value
+ * @param {*} value - Value to filter
+ * @param {string} filterName - Filter name
+ * @param {Array} args - Filter arguments
+ * @returns {*} Filtered value
+ */
+function applyFilter(value, filterName, args) {
+    // Handle null/undefined
+    if (value === null || value === undefined) {
+        value = "";
+    }
+
+    switch (filterName) {
+        case "upper":
+            return filterUpper(value);
+        case "lower":
+            return filterLower(value);
+        case "capitalize":
+            return filterCapitalize(value);
+        case "title":
+            return filterTitle(value);
+        case "length":
+            return filterLength(value);
+        case "first":
+            return filterFirst(value);
+        case "last":
+            return filterLast(value);
+        case "default":
+            return filterDefault(value, args);
+        case "replace":
+            return filterReplace(value, args);
+        case "trim":
+            return filterTrim(value);
+        case "escape":
+            return filterEscape(value);
+        case "join":
+            return filterJoin(value, args);
+        default:
+            console.log("[WARNING] Unknown filter '" + filterName + "', returning original value");
+            return value;
+    }
+}
+
+/**
+ * Convert string to uppercase
+ */
+function filterUpper(value) {
+    if (typeof value !== "string") {
+        value = String(value);
+    }
+    return value.toUpperCase();
+}
+
+/**
+ * Convert string to lowercase
+ */
+function filterLower(value) {
+    if (typeof value !== "string") {
+        value = String(value);
+    }
+    return value.toLowerCase();
+}
+
+/**
+ * Capitalize first letter
+ */
+function filterCapitalize(value) {
+    if (typeof value !== "string") {
+        value = String(value);
+    }
+    if (value.length === 0) {
+        return value;
+    }
+    return value.charAt(0).toUpperCase() + value.substring(1).toLowerCase();
+}
+
+/**
+ * Capitalize first letter of each word
+ */
+function filterTitle(value) {
+    if (typeof value !== "string") {
+        value = String(value);
+    }
+    return value.replace(/\b\w/g, function(char) {
+        return char.toUpperCase();
+    });
+}
+
+/**
+ * Get length of array or string
+ */
+function filterLength(value) {
+    if (value === null || value === undefined) {
+        return 0;
+    }
+    if (typeof value === "string" || Array.isArray(value)) {
+        return value.length;
+    }
+    if (typeof value === "object") {
+        // Count object properties
+        var count = 0;
+        for (var key in value) {
+            if (value.hasOwnProperty(key)) {
+                count++;
+            }
+        }
+        return count;
+    }
+    return 0;
+}
+
+/**
+ * Get first element of array or first character of string
+ */
+function filterFirst(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    if (typeof value === "string") {
+        return value.length > 0 ? value.charAt(0) : "";
+    }
+    if (Array.isArray(value)) {
+        return value.length > 0 ? value[0] : "";
+    }
+    return value;
+}
+
+/**
+ * Get last element of array or last character of string
+ */
+function filterLast(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+    if (typeof value === "string") {
+        return value.length > 0 ? value.charAt(value.length - 1) : "";
+    }
+    if (Array.isArray(value)) {
+        return value.length > 0 ? value[value.length - 1] : "";
+    }
+    return value;
+}
+
+/**
+ * Return default value if value is empty
+ * @param {*} value - Value to check
+ * @param {Array} args - [defaultValue]
+ */
+function filterDefault(value, args) {
+    if (args.length === 0) {
+        console.log("[WARNING] default filter requires one argument");
+        return value;
+    }
+
+    var defaultValue = args[0];
+
+    // Check if value is empty
+    if (value === null || value === undefined || value === "" ||
+        (Array.isArray(value) && value.length === 0) ||
+        (typeof value === "object" && Object.keys(value).length === 0)) {
+        return defaultValue;
+    }
+
+    return value;
+}
+
+/**
+ * Replace occurrences in string
+ * @param {*} value - String to process
+ * @param {Array} args - [oldValue, newValue]
+ */
+function filterReplace(value, args) {
+    if (typeof value !== "string") {
+        value = String(value);
+    }
+
+    if (args.length < 2) {
+        console.log("[WARNING] replace filter requires two arguments");
+        return value;
+    }
+
+    var oldValue = String(args[0]);
+    var newValue = String(args[1]);
+
+    // Replace all occurrences (not just first)
+    var result = value;
+    while (result.indexOf(oldValue) !== -1) {
+        result = result.replace(oldValue, newValue);
+    }
+
+    return result;
+}
+
+/**
+ * Trim whitespace from both ends
+ */
+function filterTrim(value) {
+    if (typeof value !== "string") {
+        value = String(value);
+    }
+    return value.replace(/^\s+|\s+$/g, '');
+}
+
+/**
+ * Escape Markdown special characters
+ */
+function filterEscape(value) {
+    if (typeof value !== "string") {
+        value = String(value);
+    }
+
+    // Escape pipe characters for Markdown tables
+    value = value.replace(/\|/g, "\\|");
+
+    // Replace newlines with <br> for table cells
+    value = value.replace(/\n/g, "<br>");
+
+    return value;
+}
+
+/**
+ * Join array elements with separator
+ * @param {*} value - Array to join
+ * @param {Array} args - [separator]
+ */
+function filterJoin(value, args) {
+    if (!Array.isArray(value)) {
+        console.log("[WARNING] join filter expects an array, got " + typeof value);
+        return value;
+    }
+
+    var separator = args.length > 0 ? String(args[0]) : ", ";
+
+    return value.join(separator);
+}

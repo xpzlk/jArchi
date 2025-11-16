@@ -1,0 +1,806 @@
+/**
+ * Jinja Template Parser for jArchi
+ * Lexer and Parser for Jinja-like template syntax
+ *
+ * Supports: {{ variables }}, {% instructions %}, {# comments #}
+ * Whitespace control: {%-, -%}
+ */
+
+/**
+ * Token types
+ */
+var TOKEN_TYPES = {
+    TEXT: "TEXT",
+    VAR_START: "VAR_START",      // {{
+    VAR_END: "VAR_END",          // }}
+    BLOCK_START: "BLOCK_START",  // {%
+    BLOCK_END: "BLOCK_END",      // %}
+    COMMENT: "COMMENT",          // {# ... #}
+    IDENTIFIER: "IDENTIFIER",
+    PIPE: "PIPE",                // |
+    DOT: "DOT",                  // .
+    COMMA: "COMMA",              // ,
+    LPAREN: "LPAREN",            // (
+    RPAREN: "RPAREN",            // )
+    LBRACKET: "LBRACKET",        // [
+    RBRACKET: "RBRACKET",        // ]
+    STRING: "STRING",            // "..." or '...'
+    NUMBER: "NUMBER",
+    OPERATOR: "OPERATOR",        // ==, !=, <, >, <=, >=, and, or, not, in
+    EOF: "EOF"
+};
+
+/**
+ * Tokenize template content
+ * @param {string} content - Template content
+ * @returns {Array} Array of tokens
+ */
+function tokenize(content) {
+    var tokens = [];
+    var pos = 0;
+    var line = 1;
+    var col = 1;
+
+    while (pos < content.length) {
+        // Try to match comment {# ... #}
+        if (content.substr(pos, 2) === "{#") {
+            var endPos = content.indexOf("#}", pos + 2);
+            if (endPos === -1) {
+                throw new Error("Unclosed comment at line " + line + ", col " + col);
+            }
+
+            var commentText = content.substring(pos + 2, endPos);
+            tokens.push({
+                type: TOKEN_TYPES.COMMENT,
+                value: commentText,
+                line: line,
+                col: col
+            });
+
+            // Update position
+            pos = endPos + 2;
+            var lines = (content.substring(tokens[tokens.length - 1].col, pos).match(/\n/g) || []).length;
+            line += lines;
+            col = lines > 0 ? 1 : col + (endPos - pos + 4);
+            continue;
+        }
+
+        // Try to match variable {{ ... }}
+        if (content.substr(pos, 2) === "{{") {
+            var stripBefore = false;
+            var stripAfter = false;
+
+            // Check for {{{- (strip before)
+            if (pos > 0 && content.charAt(pos - 1) === '-') {
+                stripBefore = true;
+            }
+
+            var endPos = content.indexOf("}}", pos + 2);
+            if (endPos === -1) {
+                throw new Error("Unclosed variable tag at line " + line + ", col " + col);
+            }
+
+            // Check for -}} (strip after)
+            if (content.charAt(endPos - 1) === '-') {
+                stripAfter = true;
+                endPos--;
+            }
+
+            var varContent = content.substring(pos + 2, endPos + (stripAfter ? 0 : 0));
+            if (stripAfter && content.charAt(endPos) === '-') {
+                varContent = varContent.substring(0, varContent.length);
+            }
+
+            tokens.push({
+                type: TOKEN_TYPES.VAR_START,
+                value: "{{",
+                line: line,
+                col: col,
+                stripBefore: stripBefore,
+                stripAfter: stripAfter
+            });
+
+            // Tokenize variable expression
+            var exprTokens = tokenizeExpression(varContent.trim(), line, col + 2);
+            tokens = tokens.concat(exprTokens);
+
+            tokens.push({
+                type: TOKEN_TYPES.VAR_END,
+                value: "}}",
+                line: line,
+                col: col
+            });
+
+            pos = endPos + (stripAfter ? 3 : 2);
+            col += (endPos - pos + 4);
+            continue;
+        }
+
+        // Try to match block {% ... %}
+        if (content.substr(pos, 2) === "{%") {
+            var stripBefore = false;
+            var stripAfter = false;
+
+            // Check for {%- (strip before)
+            if (pos > 0 && content.charAt(pos + 2) === '-') {
+                stripBefore = true;
+            }
+
+            var endPos = content.indexOf("%}", pos + 2);
+            if (endPos === -1) {
+                throw new Error("Unclosed block tag at line " + line + ", col " + col);
+            }
+
+            // Check for -%} (strip after)
+            var checkPos = endPos - 1;
+            if (content.charAt(checkPos) === '-') {
+                stripAfter = true;
+            }
+
+            var blockContent = content.substring(pos + 2 + (stripBefore ? 1 : 0), stripAfter ? endPos - 1 : endPos).trim();
+
+            tokens.push({
+                type: TOKEN_TYPES.BLOCK_START,
+                value: "{%",
+                line: line,
+                col: col,
+                stripBefore: stripBefore,
+                stripAfter: stripAfter
+            });
+
+            // Tokenize block expression
+            var blockTokens = tokenizeExpression(blockContent, line, col + 2);
+            tokens = tokens.concat(blockTokens);
+
+            tokens.push({
+                type: TOKEN_TYPES.BLOCK_END,
+                value: "%}",
+                line: line,
+                col: col
+            });
+
+            pos = endPos + 2;
+            col += (endPos - pos + 4);
+            continue;
+        }
+
+        // Text content - everything until next special tag
+        var nextSpecial = content.length;
+        var nextVar = content.indexOf("{{", pos);
+        var nextBlock = content.indexOf("{%", pos);
+        var nextComment = content.indexOf("{#", pos);
+
+        if (nextVar !== -1 && nextVar < nextSpecial) nextSpecial = nextVar;
+        if (nextBlock !== -1 && nextBlock < nextSpecial) nextSpecial = nextBlock;
+        if (nextComment !== -1 && nextComment < nextSpecial) nextSpecial = nextComment;
+
+        if (nextSpecial > pos) {
+            var text = content.substring(pos, nextSpecial);
+            tokens.push({
+                type: TOKEN_TYPES.TEXT,
+                value: text,
+                line: line,
+                col: col
+            });
+
+            var lines = (text.match(/\n/g) || []).length;
+            line += lines;
+            col = lines > 0 ? text.length - text.lastIndexOf('\n') : col + text.length;
+            pos = nextSpecial;
+        } else {
+            // Should not happen, but safety check
+            pos++;
+            col++;
+        }
+    }
+
+    tokens.push({
+        type: TOKEN_TYPES.EOF,
+        value: "",
+        line: line,
+        col: col
+    });
+
+    return tokens;
+}
+
+/**
+ * Tokenize an expression (inside {{ }} or {% %})
+ * @param {string} expr - Expression string
+ * @param {number} line - Line number
+ * @param {number} col - Column number
+ * @returns {Array} Array of tokens
+ */
+function tokenizeExpression(expr, line, col) {
+    var tokens = [];
+    var pos = 0;
+
+    while (pos < expr.length) {
+        var char = expr.charAt(pos);
+
+        // Skip whitespace
+        if (/\s/.test(char)) {
+            pos++;
+            continue;
+        }
+
+        // String literals
+        if (char === '"' || char === "'") {
+            var quote = char;
+            var str = "";
+            pos++;
+
+            while (pos < expr.length && expr.charAt(pos) !== quote) {
+                if (expr.charAt(pos) === '\\' && pos + 1 < expr.length) {
+                    // Escape sequence
+                    pos++;
+                    var nextChar = expr.charAt(pos);
+                    if (nextChar === 'n') str += '\n';
+                    else if (nextChar === 't') str += '\t';
+                    else if (nextChar === '\\') str += '\\';
+                    else if (nextChar === quote) str += quote;
+                    else str += nextChar;
+                } else {
+                    str += expr.charAt(pos);
+                }
+                pos++;
+            }
+
+            if (pos >= expr.length) {
+                throw new Error("Unclosed string at line " + line);
+            }
+
+            tokens.push({
+                type: TOKEN_TYPES.STRING,
+                value: str,
+                line: line,
+                col: col
+            });
+
+            pos++; // Skip closing quote
+            continue;
+        }
+
+        // Numbers
+        if (/\d/.test(char)) {
+            var num = "";
+            while (pos < expr.length && /[\d.]/.test(expr.charAt(pos))) {
+                num += expr.charAt(pos);
+                pos++;
+            }
+
+            tokens.push({
+                type: TOKEN_TYPES.NUMBER,
+                value: parseFloat(num),
+                line: line,
+                col: col
+            });
+            continue;
+        }
+
+        // Operators
+        if (pos + 2 <= expr.length) {
+            var twoChar = expr.substr(pos, 2);
+            if (twoChar === "==" || twoChar === "!=" || twoChar === "<=" || twoChar === ">=") {
+                tokens.push({
+                    type: TOKEN_TYPES.OPERATOR,
+                    value: twoChar,
+                    line: line,
+                    col: col
+                });
+                pos += 2;
+                continue;
+            }
+        }
+
+        if (char === '<' || char === '>') {
+            tokens.push({
+                type: TOKEN_TYPES.OPERATOR,
+                value: char,
+                line: line,
+                col: col
+            });
+            pos++;
+            continue;
+        }
+
+        // Keywords and identifiers
+        if (/[a-zA-Z_]/.test(char)) {
+            var ident = "";
+            while (pos < expr.length && /[a-zA-Z0-9_]/.test(expr.charAt(pos))) {
+                ident += expr.charAt(pos);
+                pos++;
+            }
+
+            // Check if it's an operator keyword
+            if (ident === "and" || ident === "or" || ident === "not" || ident === "in" || ident === "is") {
+                tokens.push({
+                    type: TOKEN_TYPES.OPERATOR,
+                    value: ident,
+                    line: line,
+                    col: col
+                });
+            } else {
+                tokens.push({
+                    type: TOKEN_TYPES.IDENTIFIER,
+                    value: ident,
+                    line: line,
+                    col: col
+                });
+            }
+            continue;
+        }
+
+        // Single character tokens
+        if (char === '.') {
+            tokens.push({ type: TOKEN_TYPES.DOT, value: ".", line: line, col: col });
+            pos++;
+            continue;
+        }
+        if (char === '|') {
+            tokens.push({ type: TOKEN_TYPES.PIPE, value: "|", line: line, col: col });
+            pos++;
+            continue;
+        }
+        if (char === ',') {
+            tokens.push({ type: TOKEN_TYPES.COMMA, value: ",", line: line, col: col });
+            pos++;
+            continue;
+        }
+        if (char === '(') {
+            tokens.push({ type: TOKEN_TYPES.LPAREN, value: "(", line: line, col: col });
+            pos++;
+            continue;
+        }
+        if (char === ')') {
+            tokens.push({ type: TOKEN_TYPES.RPAREN, value: ")", line: line, col: col });
+            pos++;
+            continue;
+        }
+        if (char === '[') {
+            tokens.push({ type: TOKEN_TYPES.LBRACKET, value: "[", line: line, col: col });
+            pos++;
+            continue;
+        }
+        if (char === ']') {
+            tokens.push({ type: TOKEN_TYPES.RBRACKET, value: "]", line: line, col: col });
+            pos++;
+            continue;
+        }
+
+        throw new Error("Unexpected character '" + char + "' at line " + line);
+    }
+
+    return tokens;
+}
+
+/**
+ * Parse tokens into AST
+ * @param {Array} tokens - Token array from tokenize()
+ * @returns {Object} AST root node
+ */
+function parse(tokens) {
+    var pos = 0;
+
+    function peek() {
+        return tokens[pos];
+    }
+
+    function advance() {
+        return tokens[pos++];
+    }
+
+    function expect(type, value) {
+        var token = advance();
+        if (token.type !== type || (value !== undefined && token.value !== value)) {
+            throw new Error("Expected " + type + (value ? " '" + value + "'" : "") +
+                          " but got " + token.type + " '" + token.value + "' at line " + token.line);
+        }
+        return token;
+    }
+
+    function parseRoot() {
+        var nodes = [];
+
+        while (peek().type !== TOKEN_TYPES.EOF) {
+            var token = peek();
+
+            if (token.type === TOKEN_TYPES.TEXT) {
+                advance();
+                nodes.push({
+                    type: "TEXT",
+                    value: token.value
+                });
+            } else if (token.type === TOKEN_TYPES.COMMENT) {
+                advance();
+                // Comments are ignored, don't add to AST
+            } else if (token.type === TOKEN_TYPES.VAR_START) {
+                nodes.push(parseVariable());
+            } else if (token.type === TOKEN_TYPES.BLOCK_START) {
+                nodes.push(parseBlock());
+            } else {
+                throw new Error("Unexpected token " + token.type + " at line " + token.line);
+            }
+        }
+
+        return {
+            type: "ROOT",
+            children: nodes
+        };
+    }
+
+    function parseVariable() {
+        var startToken = expect(TOKEN_TYPES.VAR_START);
+        var expr = parseExpression();
+        expect(TOKEN_TYPES.VAR_END);
+
+        return {
+            type: "VAR",
+            expression: expr,
+            stripBefore: startToken.stripBefore,
+            stripAfter: startToken.stripAfter
+        };
+    }
+
+    function parseBlock() {
+        var startToken = expect(TOKEN_TYPES.BLOCK_START);
+        var keyword = expect(TOKEN_TYPES.IDENTIFIER);
+
+        if (keyword.value === "for") {
+            return parseFor(startToken);
+        } else if (keyword.value === "if") {
+            return parseIf(startToken);
+        } else if (keyword.value === "elif" || keyword.value === "else" || keyword.value === "endif" || keyword.value === "endfor") {
+            throw new Error("Unexpected '" + keyword.value + "' at line " + keyword.line);
+        } else {
+            throw new Error("Unknown block keyword '" + keyword.value + "' at line " + keyword.line);
+        }
+    }
+
+    function parseFor(startToken) {
+        // {% for item in items %}
+        var loopVar = expect(TOKEN_TYPES.IDENTIFIER);
+        expect(TOKEN_TYPES.OPERATOR, "in");
+        var iterable = parseExpression();
+        var endToken = expect(TOKEN_TYPES.BLOCK_END);
+
+        // Parse body until {% endfor %}
+        var body = [];
+        while (true) {
+            var token = peek();
+
+            if (token.type === TOKEN_TYPES.EOF) {
+                throw new Error("Missing {% endfor %} for {% for %} at line " + startToken.line);
+            }
+
+            if (token.type === TOKEN_TYPES.BLOCK_START) {
+                // Look ahead for endfor
+                var savedPos = pos;
+                advance(); // consume BLOCK_START
+
+                if (peek().type === TOKEN_TYPES.IDENTIFIER && peek().value === "endfor") {
+                    advance(); // consume endfor
+                    var endForToken = expect(TOKEN_TYPES.BLOCK_END);
+
+                    return {
+                        type: "FOR",
+                        loopVar: loopVar.value,
+                        iterable: iterable,
+                        body: body,
+                        stripBefore: startToken.stripBefore,
+                        stripAfter: endForToken.stripAfter
+                    };
+                } else {
+                    // Not endfor, restore position and parse normally
+                    pos = savedPos;
+                }
+            }
+
+            // Parse child node
+            if (token.type === TOKEN_TYPES.TEXT) {
+                advance();
+                body.push({ type: "TEXT", value: token.value });
+            } else if (token.type === TOKEN_TYPES.COMMENT) {
+                advance();
+            } else if (token.type === TOKEN_TYPES.VAR_START) {
+                body.push(parseVariable());
+            } else if (token.type === TOKEN_TYPES.BLOCK_START) {
+                body.push(parseBlock());
+            } else {
+                throw new Error("Unexpected token in for loop body at line " + token.line);
+            }
+        }
+    }
+
+    function parseIf(startToken) {
+        // {% if condition %}
+        var condition = parseExpression();
+        var endToken = expect(TOKEN_TYPES.BLOCK_END);
+
+        var branches = [{
+            condition: condition,
+            body: []
+        }];
+
+        var currentBranch = 0;
+
+        // Parse body until {% elif %}, {% else %}, or {% endif %}
+        while (true) {
+            var token = peek();
+
+            if (token.type === TOKEN_TYPES.EOF) {
+                throw new Error("Missing {% endif %} for {% if %} at line " + startToken.line);
+            }
+
+            if (token.type === TOKEN_TYPES.BLOCK_START) {
+                var savedPos = pos;
+                advance(); // consume BLOCK_START
+
+                var nextToken = peek();
+                if (nextToken.type === TOKEN_TYPES.IDENTIFIER) {
+                    if (nextToken.value === "endif") {
+                        advance(); // consume endif
+                        var endIfToken = expect(TOKEN_TYPES.BLOCK_END);
+
+                        return {
+                            type: "IF",
+                            branches: branches,
+                            stripBefore: startToken.stripBefore,
+                            stripAfter: endIfToken.stripAfter
+                        };
+                    } else if (nextToken.value === "elif") {
+                        advance(); // consume elif
+                        var elifCondition = parseExpression();
+                        expect(TOKEN_TYPES.BLOCK_END);
+
+                        branches.push({
+                            condition: elifCondition,
+                            body: []
+                        });
+                        currentBranch++;
+                        continue;
+                    } else if (nextToken.value === "else") {
+                        advance(); // consume else
+                        expect(TOKEN_TYPES.BLOCK_END);
+
+                        branches.push({
+                            condition: null, // else has no condition
+                            body: []
+                        });
+                        currentBranch++;
+                        continue;
+                    }
+                }
+
+                // Not a control keyword, restore and parse normally
+                pos = savedPos;
+            }
+
+            // Parse child node
+            if (token.type === TOKEN_TYPES.TEXT) {
+                advance();
+                branches[currentBranch].body.push({ type: "TEXT", value: token.value });
+            } else if (token.type === TOKEN_TYPES.COMMENT) {
+                advance();
+            } else if (token.type === TOKEN_TYPES.VAR_START) {
+                branches[currentBranch].body.push(parseVariable());
+            } else if (token.type === TOKEN_TYPES.BLOCK_START) {
+                branches[currentBranch].body.push(parseBlock());
+            } else {
+                throw new Error("Unexpected token in if block body at line " + token.line);
+            }
+        }
+    }
+
+    function parseExpression() {
+        return parseOrExpression();
+    }
+
+    function parseOrExpression() {
+        var left = parseAndExpression();
+
+        while (peek().type === TOKEN_TYPES.OPERATOR && peek().value === "or") {
+            advance();
+            var right = parseAndExpression();
+            left = {
+                type: "BINARY_OP",
+                operator: "or",
+                left: left,
+                right: right
+            };
+        }
+
+        return left;
+    }
+
+    function parseAndExpression() {
+        var left = parseNotExpression();
+
+        while (peek().type === TOKEN_TYPES.OPERATOR && peek().value === "and") {
+            advance();
+            var right = parseNotExpression();
+            left = {
+                type: "BINARY_OP",
+                operator: "and",
+                left: left,
+                right: right
+            };
+        }
+
+        return left;
+    }
+
+    function parseNotExpression() {
+        if (peek().type === TOKEN_TYPES.OPERATOR && peek().value === "not") {
+            advance();
+            var expr = parseNotExpression();
+            return {
+                type: "UNARY_OP",
+                operator: "not",
+                operand: expr
+            };
+        }
+
+        return parseComparisonExpression();
+    }
+
+    function parseComparisonExpression() {
+        var left = parseIsExpression();
+
+        var token = peek();
+        if (token.type === TOKEN_TYPES.OPERATOR &&
+            (token.value === "==" || token.value === "!=" ||
+             token.value === "<" || token.value === ">" ||
+             token.value === "<=" || token.value === ">=")) {
+            advance();
+            var right = parseIsExpression();
+            return {
+                type: "BINARY_OP",
+                operator: token.value,
+                left: left,
+                right: right
+            };
+        }
+
+        if (token.type === TOKEN_TYPES.OPERATOR && token.value === "in") {
+            advance();
+            var right = parseIsExpression();
+            return {
+                type: "BINARY_OP",
+                operator: "in",
+                left: left,
+                right: right
+            };
+        }
+
+        return left;
+    }
+
+    function parseIsExpression() {
+        var left = parseFilterExpression();
+
+        if (peek().type === TOKEN_TYPES.OPERATOR && peek().value === "is") {
+            advance();
+
+            var negate = false;
+            if (peek().type === TOKEN_TYPES.OPERATOR && peek().value === "not") {
+                advance();
+                negate = true;
+            }
+
+            var testName = expect(TOKEN_TYPES.IDENTIFIER);
+
+            return {
+                type: "TEST",
+                testName: testName.value,
+                value: left,
+                negate: negate
+            };
+        }
+
+        return left;
+    }
+
+    function parseFilterExpression() {
+        var expr = parsePrimaryExpression();
+
+        while (peek().type === TOKEN_TYPES.PIPE) {
+            advance(); // consume |
+            var filterName = expect(TOKEN_TYPES.IDENTIFIER);
+            var args = [];
+
+            // Check for filter arguments
+            if (peek().type === TOKEN_TYPES.LPAREN) {
+                advance(); // consume (
+
+                if (peek().type !== TOKEN_TYPES.RPAREN) {
+                    args.push(parsePrimaryExpression());
+
+                    while (peek().type === TOKEN_TYPES.COMMA) {
+                        advance(); // consume ,
+                        args.push(parsePrimaryExpression());
+                    }
+                }
+
+                expect(TOKEN_TYPES.RPAREN);
+            }
+
+            expr = {
+                type: "FILTER",
+                filterName: filterName.value,
+                value: expr,
+                args: args
+            };
+        }
+
+        return expr;
+    }
+
+    function parsePrimaryExpression() {
+        var token = peek();
+
+        if (token.type === TOKEN_TYPES.STRING) {
+            advance();
+            return {
+                type: "LITERAL",
+                value: token.value,
+                valueType: "string"
+            };
+        }
+
+        if (token.type === TOKEN_TYPES.NUMBER) {
+            advance();
+            return {
+                type: "LITERAL",
+                value: token.value,
+                valueType: "number"
+            };
+        }
+
+        if (token.type === TOKEN_TYPES.IDENTIFIER) {
+            return parseMemberExpression();
+        }
+
+        if (token.type === TOKEN_TYPES.LPAREN) {
+            advance();
+            var expr = parseExpression();
+            expect(TOKEN_TYPES.RPAREN);
+            return expr;
+        }
+
+        throw new Error("Unexpected token in expression: " + token.type + " at line " + token.line);
+    }
+
+    function parseMemberExpression() {
+        var base = expect(TOKEN_TYPES.IDENTIFIER);
+        var expr = {
+            type: "MEMBER",
+            path: [base.value]
+        };
+
+        while (true) {
+            if (peek().type === TOKEN_TYPES.DOT) {
+                advance(); // consume .
+                var member = expect(TOKEN_TYPES.IDENTIFIER);
+                expr.path.push(member.value);
+            } else if (peek().type === TOKEN_TYPES.LBRACKET) {
+                // Convert to INDEX type when we encounter bracket notation
+                advance(); // consume [
+                var indexExpr = parseExpression();
+                expect(TOKEN_TYPES.RBRACKET);
+
+                expr = {
+                    type: "INDEX",
+                    object: expr,
+                    index: indexExpr
+                };
+            } else {
+                break;
+            }
+        }
+
+        return expr;
+    }
+
+    return parseRoot();
+}

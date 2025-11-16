@@ -1,0 +1,103 @@
+# jArchi Scripts .gitignore
+
+# =====================
+# Generated Output Files
+# =====================
+
+# Output directories for generated documentation
+**/output/
+**/output/**
+
+# Generated Markdown and PNG files (except in templates/ and examples/)
+# Only ignore generated files, not source templates
+*.png
+!**/templates/**
+!**/examples/**
+
+# =====================
+# Archives & Backups
+# =====================
+
+# Archive directories
+_archives/
+_archives/**
+*.backup
+*~
+*.old
+
+# =====================
+# IDE & Editor Files
+# =====================
+
+# Claude Code configuration (user-specific)
+.claude/
+
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# =====================
+# Operating System Files
+# =====================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# =====================
+# Temporary & Log Files
+# =====================
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# =====================
+# Node modules (if any)
+# =====================
+
+node_modules/
+package-lock.json
+yarn.lock
+
+# =====================
+# Project-specific
+# =====================
+
+# Keep templates and examples
+!templates/
+!examples/
+!**/templates/*.md
+!**/examples/*.md
+
+# Ignore test output
+test-output/

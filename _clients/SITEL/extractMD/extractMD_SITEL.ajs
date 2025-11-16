@@ -4,21 +4,128 @@
  * Client-specific caller for SITEL extractMD templates
  *
  * This script:
- * 1. Identifies the SITEL templates directory
- * 2. Calls the generic extractMD engine
- * 3. Generates documentation based on SITEL-specific templates
+ * 1. Checks that a view is selected
+ * 2. Lists available SITEL templates
+ * 3. Asks user to select a template
+ * 4. Calls the generic extractMD engine
+ * 5. Generates documentation based on SITEL-specific templates
  */
 
-// Mark this as a caller script (prevents auto-execution of the loaded script)
-var __CALLER_SCRIPT__ = true;
-
-console.log(__DIR__);
+console.clear();
+console.show();
 
 // Load generic extractMD engine
-load(__DIR__ + "..\\..\\..\\Tools\\extractMD\\extractMD.ajs");
+load(__DIR__ + "../../../Tools/extractMD/extractMD.ajs");
 
-// Identify SITEL templates directory
-var templatesDir = __DIR__ + "templates\\";
+// Java types
+var File = Java.type("java.io.File");
 
-// Call generic extraction function
-extractMD(templatesDir, __DIR__);
+// Check view selection
+var view = selection.filter("archimate-diagram-model").first();
+
+if (!view) {
+    window.alert("Veuillez sélectionner une vue avant d'exécuter ce script.");
+    exit();
+}
+
+console.log("=".repeat(50));
+console.log("Extract Markdown Documentation - SITEL");
+console.log("=".repeat(50));
+console.log("Vue sélectionnée : " + view.name);
+console.log("");
+
+// List available templates
+var templatesDir = new File(__DIR__ + "templates");
+var templateFiles = templatesDir.listFiles();
+var templates = [];
+
+if (!templatesDir.exists() || !templatesDir.isDirectory()) {
+    window.alert("Le répertoire templates/ n'existe pas :\n" + templatesDir.getAbsolutePath());
+    exit();
+}
+
+for (var i = 0; i < templateFiles.length; i++) {
+    if (templateFiles[i].getName().endsWith(".md")) {
+        templates.push(templateFiles[i].getName());
+    }
+}
+
+if (templates.length === 0) {
+    window.alert("Aucun template trouvé dans le répertoire templates/");
+    exit();
+}
+
+console.log("Templates disponibles :");
+for (var i = 0; i < templates.length; i++) {
+    console.log("  " + (i + 1) + ". " + templates[i]);
+}
+console.log("");
+
+// Check if view has a saved template preference
+var savedTemplate = view.prop("extractMD.LastTemplate");
+var selectedTemplate = null;
+
+if (savedTemplate && savedTemplate !== "") {
+    // Check if the saved template still exists
+    var templateExists = false;
+    for (var i = 0; i < templates.length; i++) {
+        if (templates[i] === savedTemplate) {
+            templateExists = true;
+            break;
+        }
+    }
+
+    if (templateExists) {
+        selectedTemplate = savedTemplate;
+        console.log("Utilisation du template précédent : " + selectedTemplate);
+        console.log("(Pour changer de template, supprimez la propriété 'extractMD.LastTemplate')");
+    } else {
+        console.log("[WARNING] Le template précédent '" + savedTemplate + "' n'existe plus.");
+        console.log("Veuillez sélectionner un nouveau template.");
+    }
+}
+
+// If no valid saved template, prompt user
+if (!selectedTemplate) {
+    selectedTemplate = window.promptSelection(
+        "Sélectionnez un template SITEL :",
+        templates
+    );
+
+    if (!selectedTemplate) {
+        console.log("Opération annulée par l'utilisateur.");
+        exit();
+    }
+
+    selectedTemplate = selectedTemplate.toString();
+
+    // Save the selected template for next time
+    view.prop("extractMD.LastTemplate", selectedTemplate);
+    console.log("Template sélectionné : " + selectedTemplate);
+    console.log("(Ce choix sera mémorisé pour cette vue)");
+}
+
+console.log("");
+
+// Call extractViewToMarkdown
+var outputDir = __DIR__ + "output";
+var templatePath = __DIR__ + "templates/" + selectedTemplate;
+
+var result = extractViewToMarkdown(view, outputDir, templatePath);
+
+if (result.success) {
+    console.log("");
+    console.log("=".repeat(50));
+    console.log("Documentation générée avec succès !");
+    console.log("=".repeat(50));
+} else {
+    console.error("");
+    console.error("=".repeat(50));
+    console.error("ERREUR !");
+    console.error("=".repeat(50));
+
+    window.alert(
+        "Erreur lors de la génération de la documentation :\n\n" +
+        result.error
+    );
+}

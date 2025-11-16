@@ -288,6 +288,10 @@ function enrichElementsWithVisualHierarchy(elements, visualParentMap, elementsMa
         if (parentId) {
             element.visualParentId = parentId;
             element.visualParent = elementsMap[parentId];
+        } else {
+            // Ensure root elements have empty string instead of null for easier filtering
+            element.visualParentId = "";
+            element.visualParent = null;
         }
     }
 

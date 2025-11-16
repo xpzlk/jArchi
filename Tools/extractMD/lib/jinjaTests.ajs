@@ -1,0 +1,100 @@
+/**
+ * Jinja Template Tests for jArchi
+ * Implements all required tests for template conditions
+ */
+
+/**
+ * Apply a test to a value
+ * @param {*} value - Value to test
+ * @param {string} testName - Test name
+ * @returns {boolean} Test result
+ */
+function applyTest(value, testName) {
+    switch (testName) {
+        case "defined":
+            return testDefined(value);
+        case "empty":
+            return testEmpty(value);
+        case "even":
+            return testEven(value);
+        case "odd":
+            return testOdd(value);
+        default:
+            console.log("[WARNING] Unknown test '" + testName + "', returning false");
+            return false;
+    }
+}
+
+/**
+ * Test if value is defined (not null/undefined)
+ */
+function testDefined(value) {
+    return value !== null && value !== undefined;
+}
+
+/**
+ * Test if value is empty
+ * - null or undefined
+ * - empty string ""
+ * - empty array []
+ * - empty object {}
+ */
+function testEmpty(value) {
+    if (value === null || value === undefined) {
+        return true;
+    }
+
+    if (typeof value === "string") {
+        return value.length === 0;
+    }
+
+    if (Array.isArray(value)) {
+        return value.length === 0;
+    }
+
+    if (typeof value === "object") {
+        // Check if object has any properties
+        for (var key in value) {
+            if (value.hasOwnProperty(key)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Test if number is even
+ */
+function testEven(value) {
+    if (typeof value !== "number") {
+        // Try to convert to number
+        var num = parseFloat(value);
+        if (isNaN(num)) {
+            console.log("[WARNING] even test expects a number, got " + typeof value);
+            return false;
+        }
+        value = num;
+    }
+
+    return value % 2 === 0;
+}
+
+/**
+ * Test if number is odd
+ */
+function testOdd(value) {
+    if (typeof value !== "number") {
+        // Try to convert to number
+        var num = parseFloat(value);
+        if (isNaN(num)) {
+            console.log("[WARNING] odd test expects a number, got " + typeof value);
+            return false;
+        }
+        value = num;
+    }
+
+    return value % 2 !== 0;
+}
