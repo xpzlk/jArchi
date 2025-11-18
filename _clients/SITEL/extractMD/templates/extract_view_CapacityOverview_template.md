@@ -2,18 +2,22 @@
 title: "Capacity Overview"
 ---
 
-# {{view.name}}
+# {{ view.name }}
 
-{{view.image.png}}
+{% if viewImagePath -%}
+![Vue d'ensemble]({{ viewImagePath }})
+{% endif -%}
 
-{{#each groups where name != "Légende" AND name != ""}}
-## {{group.name}}
+{% for element in elements -%}
+{% if element.isGroup and element.name != "Légende" and element.name != "" -%}
+## {{ element.name }}
 
 |Capacité|Intention|
 |-|-|
-{{#each group.children}}
-|{{child.name}}|{{child.documentation}}|
-{{/each group.children}}
+{%- for child in element.visualChildren -%}
+|{{ child.name }}|{{ child.documentation|escape }}|
+{% endfor %}
 
-{{/each groups}}
+{% endif -%}
+{% endfor -%}
 

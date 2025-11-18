@@ -156,6 +156,9 @@ function extractViewToMarkdown(view, outputDir, templatePath) {
         console.log("Extracting view data...");
         var viewData = extractCompleteViewStructure(view);
 
+        // Sort elements by visual position (top-to-bottom, left-to-right)
+        viewData.elements = sortElementsByVisualPosition(viewData, "y-then-x");
+
         // Add image path to context (relative path for markdown)
         viewData.viewImagePath = pngFileName;
 

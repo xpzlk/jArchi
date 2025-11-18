@@ -135,12 +135,13 @@ function renderFor(node, context) {
 
         var iterationOutput = renderChildren(node.body, loopContext);
 
-        // Apply whitespace stripping for loop body
-        if (node.stripAfter && iterationOutput.length > 0) {
-            iterationOutput = iterationOutput.replace(/\s+$/, "");
-        }
-
         output += iterationOutput;
+
+        // Apply whitespace stripping AFTER each iteration (not just at the end)
+        if (node.stripAfter && output.length > 0 && i < items.length - 1) {
+            // Strip trailing whitespace after this iteration (before next iteration)
+            output = output.replace(/\s+$/, "");
+        }
     }
 
     return output;

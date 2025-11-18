@@ -215,8 +215,15 @@ function filterEscape(value) {
         value = String(value);
     }
 
+    // Normalize line endings: remove all \r characters (handles \r\n Windows and \r old Mac)
+    value = value.replace(/\r/g, "");
+
     // Escape pipe characters for Markdown tables
     value = value.replace(/\|/g, "\\|");
+
+    // Replace multiple consecutive newlines with single newline (collapse paragraphs)
+    // This prevents double <br><br> which breaks Markdown tables
+    value = value.replace(/\n\n+/g, "\n");
 
     // Replace newlines with <br> for table cells
     value = value.replace(/\n/g, "<br>");

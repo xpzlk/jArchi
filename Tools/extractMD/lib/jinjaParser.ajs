@@ -156,7 +156,8 @@ function tokenize(content) {
                 type: TOKEN_TYPES.BLOCK_END,
                 value: "%}",
                 line: line,
-                col: col
+                col: col,
+                stripAfter: stripAfter
             });
 
             pos = endPos + 2;
@@ -488,7 +489,7 @@ function parse(tokens) {
                         iterable: iterable,
                         body: body,
                         stripBefore: startToken.stripBefore,
-                        stripAfter: endForToken.stripAfter
+                        stripAfter: endToken.stripAfter || endForToken.stripAfter  // Check both {% for -%} and {%- endfor %}
                     };
                 } else {
                     // Not endfor, restore position and parse normally
